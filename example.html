@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+</head>
+<body>
+	<ul id="list"></ul>
+	<script src="jquery.min.js"></script>
+	<script src="backbeam.js"></script>
+	<script>
+		var client = backbeam.createClient({ project:'callezeta', host:'backbeam.dev', port:'8080' })
+		client.select('event').fetch(10, 0, function(objects, references) {
+			$.each(objects, function(i, obj) {
+				$('#list').append($('<li></li>').text(obj.value('name')))
+			})
+		})
+	</script>
+</body>
