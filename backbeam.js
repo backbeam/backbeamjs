@@ -10,27 +10,29 @@
 			return 'http://'+options.project+'.'+options.host+':'+options.port+'/file/'+id+params
 		}
 
-		var request = function(method, path, params, body, success, error) {
+		var request = function(method, path, params, callback) {
+			var prms = method !== 'GET' ? {_method:method} : {}
+			for (var key in params) { prms[key] = params[key] }
+
 			var url = 'http://'+options.project+'.'+options.host+':'+options.port+path
 			$.ajax({
-				type:method,
+				type:'GET',
 				url:url,
-				data:params,
+				data:prms,
 				dataType:'jsonp',
-				jsonpCallback:'_c',
 				success: function(data, status, xhr) {
-					// console.log('data', data, status)
-					success(data)
+					callback(null, data)
 				},
 				error: function(xhr, errorType, err) {
 					console.log('error', errorType, err)
-					error(errorType, error)
+					callback(err)
 				}
 			})
 		}
 
-		var normalizeObject = function(object) {
+		var empty = function(entity) {
 			var obj = {
+				entity: entity,
 				createdAt: null,
 				updatedAt: null,
 				id: null,
@@ -42,6 +44,36 @@
 					this.values[field] = _new
 				}
 			}
+
+			obj.insert = function(callback) {
+				request('POST', '/api/'+entity, obj.values, function(error, data) {
+					if (error) { return callback(error) }
+					obj.id = data.id
+					callback(null, data)
+				})
+			}
+
+			obj.update = function(callback) {
+				// TODO: if not obj.id
+				request('PUT', '/api/'+entity+'/'+obj.id, obj.values, function(error, data) {
+					if (error) { return callback(error) }
+					callback(null, data)
+				})
+			}
+
+			obj.remove = function(callback) {
+				// TODO: if not obj.id
+				request('DELETE', '/api/'+entity+'/'+obj.id, {}, function(error, data) {
+					if (error) { return callback(error) }
+					callback(null, data)
+				})
+			}
+
+			return obj
+		}
+
+		var normalizeObject = function(object) {
+			var obj = empty(null)
 			for (var field in object) {
 				var value = object[field]
 				if (field === '_created_at') {
@@ -86,12 +118,13 @@
 					else { params = args.slice(1, args.length) }
 					return this
 				},
-				fetch: function(limit, offset, success, error) {
-					request('GET', '/api/'+entity, { q:q, params:params, limit:limit, offset:offset }, {}, function(data) {
+				fetch: function(limit, offset, callback) {
+					request('GET', '/api/'+entity, { q:q, params:params, limit:limit, offset:offset }, function(error, data) {
+						if (error) { return callback(error) }
 						var objs = normalizeArray(data.objects)
 						var references = normalizeDictionary(data.references)
-						success(objs, references)
-					}, error)
+						callback(null, objs, references)
+					})
 					return this
 				},
 				next: function(limit) {
@@ -103,7 +136,8 @@
 		return {
 			request: request,
 			select: select,
-			fileURL: fileURL
+			fileURL: fileURL,
+			empty: empty
 		}
 	}
 })()

@@ -1,7 +1,7 @@
 backbeamjs
 ==========
 
-Javascript SDK for backbeam.io
+Javascript SDK for [backbeam.io](http://backbeam.io). This SDK is intented to be used in mobile web applications. At this moment it requires jQuery. But this dependency will be optional in the future.
 
 Create an object
 ----------------
@@ -44,5 +44,5 @@ The returned objects by a query have the following properties and methods:
 * `id`. String containing the unique object identifier
 * `createdAt`
 * `updatedAt`
-* `value(field)`. Returns the value of the given field
-* `value(field, val)`. Sets the value of the given field
+* `value(field)` Returns the value of the given field
+* `value(field, val)` Sets the value of the given field

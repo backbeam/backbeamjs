@@ -9,9 +9,20 @@
 	<script src="backbeam.js"></script>
 	<script>
 		var client = backbeam.createClient({ project:'callezeta', host:'backbeam.dev', port:'8080' })
-		client.select('event').fetch(10, 0, function(objects, references) {
+		client.select('event').fetch(10, 0, function(error, objects, references) {
 			$.each(objects, function(i, obj) {
 				$('#list').append($('<li></li>').text(obj.value('name')))
+			})
+		})
+
+		var e = client.empty('event')
+		e.value('name', 'A new event')
+		e.insert(function(err, foo) {
+			e.value('name', 'An updated event')
+			e.update(function(err, foo) {
+				e.remove(function(err, foo) {
+					console.log('inserted, updated and finally... deleted')
+				})
 			})
 		})
 	</script>
