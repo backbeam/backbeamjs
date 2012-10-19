@@ -9,21 +9,28 @@
 	<script src="backbeam.js"></script>
 	<script>
 		var client = backbeam.createClient({ project:'callezeta', host:'backbeam.dev', port:'8080' })
-		client.select('event').fetch(10, 0, function(error, objects, references) {
+		client.select('event').query('join last 1 images').fetch(100, 0, function(error, objects) {
 			$.each(objects, function(i, obj) {
-				$('#list').append($('<li></li>').text(obj.value('name')))
+				var li = $('<li></li>').text(obj.get('name'))
+				$('#list').append(li)
+				var images = obj.get('images').result
+				if (images && images.length > 0) {
+					var first = images[0]
+					var url = client.fileURL(first.id, {width:44, height:44})
+					li.prepend($('<img>').attr('src', url))
+				}
 			})
 		})
 
-		var e = client.empty('event')
-		e.value('name', 'A new event')
-		e.insert(function(err, foo) {
-			e.value('name', 'An updated event')
-			e.update(function(err, foo) {
-				e.remove(function(err, foo) {
-					console.log('inserted, updated and finally... deleted')
-				})
-			})
-		})
+		// var e = client.empty('event')
+		// e.set('name', 'A new event')
+		// e.insert(function(err, foo) {
+		// 	e.set('name', 'An updated event')
+		// 	e.update(function(err, foo) {
+		// 		e.remove(function(err, foo) {
+		// 			console.log('inserted, updated and finally... deleted')
+		// 		})
+		// 	})
+		// })
 	</script>
 </body>

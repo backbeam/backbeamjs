@@ -37,11 +37,11 @@
 				updatedAt: null,
 				id: null,
 				values: {},
-				value: function(field, _new) {
-					if (typeof _new === 'undefined') {
-						return this.values[field]
-					}
+				set: function(field, _new) {
 					this.values[field] = _new
+				},
+				get: function(field) {
+					return this.values[field]
 				}
 			}
 
@@ -72,28 +72,47 @@
 			return obj
 		}
 
-		var normalizeObject = function(object) {
+		var normalizeObject = function(object, references) {
 			var obj = empty(null)
 			for (var field in object) {
 				var value = object[field]
-				if (field === '_created_at') {
+				if (field === 'created_at') {
 					obj.createdAt = new Date(value)
-				} else if (field === '_updated_at') {
+				} else if (field === 'updated_at') {
 					obj.updatedAt = new Date(value)
-				} else if (field === '_id') {
+				} else if (field === 'id') {
 					obj.id = value
+				} else if (field === 'type') {
+					obj.entity = value
 				} else {
-					obj.value(field, value)
+					var i = field.indexOf('#')
+					if (i > 0) {
+						var type = field.substring(i+1, field.length)
+						// TODO: check types
+						if (type === 'r') {
+							if (value.constructor == Object) {
+								var arr = []
+								var objs = value.result
+								for (var j = 0; j < objs.length; j++) {
+									var id = objs[j]
+									arr.push(references[id])
+								}
+								value.result = arr
+							}
+						}
+						field = field.substring(0, i)
+						obj.set(field, value)
+					}
 				}
 			}
 			return obj
 		}
 
-		var normalizeArray = function(objects) {
+		var normalizeArray = function(objects, references) {
 			var objs = []
 			for (var i = 0; i < objects.length; i++) {
 				var object = objects[i]
-				objs.push(normalizeObject(objects[i]))
+				objs.push(normalizeObject(objects[i], references))
 			}
 			return objs
 		}
@@ -121,9 +140,9 @@
 				fetch: function(limit, offset, callback) {
 					request('GET', '/api/'+entity, { q:q, params:params, limit:limit, offset:offset }, function(error, data) {
 						if (error) { return callback(error) }
-						var objs = normalizeArray(data.objects)
 						var references = normalizeDictionary(data.references)
-						callback(null, objs, references)
+						var objs = normalizeArray(data.objects, references)
+						callback(null, objs)
 					})
 					return this
 				},
