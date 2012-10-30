@@ -4,17 +4,18 @@
 	backbeam.createClient = function(options) {
 		options.host = options.host || 'backbeam.io'
 		options.port = options.port || '80'
+		options.env  = options.env  || 'dev'
 
 		var fileURL = function(id, params) {
 			var params = params ? '?'+$.param(params) : ''
-			return 'http://'+options.project+'.'+options.host+':'+options.port+'/file/'+id+params
+			return 'http://'+options.project+'.'+options.host+':'+options.port+'/file/'+options.env+'/'+id+params
 		}
 
 		var request = function(method, path, params, callback) {
 			var prms = method !== 'GET' ? {_method:method} : {}
 			for (var key in params) { prms[key] = params[key] }
 
-			var url = 'http://'+options.project+'.'+options.host+':'+options.port+path
+			var url = 'http://api.'+options.env+'.'+options.project+'.'+options.host+':'+options.port+path
 			$.ajax({
 				type:'GET',
 				url:url,
@@ -46,7 +47,7 @@
 			}
 
 			obj.insert = function(callback) {
-				request('POST', '/api/'+entity, obj.values, function(error, data) {
+				request('POST', '/'+entity, obj.values, function(error, data) {
 					if (error) { return callback(error) }
 					obj.id = data.id
 					callback(null, data)
@@ -55,7 +56,7 @@
 
 			obj.update = function(callback) {
 				// TODO: if not obj.id
-				request('PUT', '/api/'+entity+'/'+obj.id, obj.values, function(error, data) {
+				request('PUT', '/'+entity+'/'+obj.id, obj.values, function(error, data) {
 					if (error) { return callback(error) }
 					callback(null, data)
 				})
@@ -63,7 +64,7 @@
 
 			obj.remove = function(callback) {
 				// TODO: if not obj.id
-				request('DELETE', '/api/'+entity+'/'+obj.id, {}, function(error, data) {
+				request('DELETE', '/'+entity+'/'+obj.id, {}, function(error, data) {
 					if (error) { return callback(error) }
 					callback(null, data)
 				})
@@ -138,7 +139,7 @@
 					return this
 				},
 				fetch: function(limit, offset, callback) {
-					request('GET', '/api/'+entity, { q:q, params:params, limit:limit, offset:offset }, function(error, data) {
+					request('GET', '/'+entity, { q:q, params:params, limit:limit, offset:offset }, function(error, data) {
 						if (error) { return callback(error) }
 						var references = normalizeDictionary(data.references)
 						var objs = normalizeArray(data.objects, references)
