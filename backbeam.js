@@ -47,27 +47,63 @@
 			}
 
 			obj.insert = function(callback) {
-				request('POST', '/'+entity, obj.values, function(error, data) {
+				request('POST', '/data/'+entity, obj.values, function(error, data) {
 					if (error) { return callback(error) }
-					obj.id = data.id
-					callback(null, data)
+					if (data.object) { obj.fill(data.object) }
+					callback(null, obj, data.status)
 				})
 			}
 
 			obj.update = function(callback) {
 				// TODO: if not obj.id
-				request('PUT', '/'+entity+'/'+obj.id, obj.values, function(error, data) {
+				request('PUT', '/data/'+entity+'/'+obj.id, obj.values, function(error, data) {
 					if (error) { return callback(error) }
-					callback(null, data)
+					if (data.object) { obj.fill(data.object) }
+					callback(null, obj, data.status)
 				})
 			}
 
 			obj.remove = function(callback) {
 				// TODO: if not obj.id
-				request('DELETE', '/'+entity+'/'+obj.id, {}, function(error, data) {
+				request('DELETE', '/data/'+entity+'/'+obj.id, {}, function(error, data) {
 					if (error) { return callback(error) }
-					callback(null, data)
+					if (data.object) { obj.fill(data.object) }
+					callback(null, obj, data.status)
 				})
+			}
+
+			obj.fill = function(object, references) {
+				for (var field in object) {
+					var value = object[field]
+					if (field === 'created_at') {
+						obj.createdAt = new Date(value)
+					} else if (field === 'updated_at') {
+						obj.updatedAt = new Date(value)
+					} else if (field === 'id') {
+						obj.id = value
+					} else if (field === 'type') {
+						obj.entity = value
+					} else {
+						var i = field.indexOf('#')
+						if (i > 0) {
+							var type = field.substring(i+1, field.length)
+							// TODO: check types
+							if (type === 'r') {
+								if (value.constructor == Object) {
+									var arr = []
+									var objs = value.result
+									for (var j = 0; j < objs.length; j++) {
+										var id = objs[j]
+										arr.push(references[id])
+									}
+									value.result = arr
+								}
+							}
+							field = field.substring(0, i)
+							obj.set(field, value)
+						}
+					}
+				}
 			}
 
 			return obj
@@ -75,37 +111,7 @@
 
 		var normalizeObject = function(object, references) {
 			var obj = empty(null)
-			for (var field in object) {
-				var value = object[field]
-				if (field === 'created_at') {
-					obj.createdAt = new Date(value)
-				} else if (field === 'updated_at') {
-					obj.updatedAt = new Date(value)
-				} else if (field === 'id') {
-					obj.id = value
-				} else if (field === 'type') {
-					obj.entity = value
-				} else {
-					var i = field.indexOf('#')
-					if (i > 0) {
-						var type = field.substring(i+1, field.length)
-						// TODO: check types
-						if (type === 'r') {
-							if (value.constructor == Object) {
-								var arr = []
-								var objs = value.result
-								for (var j = 0; j < objs.length; j++) {
-									var id = objs[j]
-									arr.push(references[id])
-								}
-								value.result = arr
-							}
-						}
-						field = field.substring(0, i)
-						obj.set(field, value)
-					}
-				}
-			}
+			obj.fill(object, references)
 			return obj
 		}
 
@@ -139,7 +145,7 @@
 					return this
 				},
 				fetch: function(limit, offset, callback) {
-					request('GET', '/'+entity, { q:q, params:params, limit:limit, offset:offset }, function(error, data) {
+					request('GET', '/data/'+entity, { q:q, params:params, limit:limit, offset:offset }, function(error, data) {
 						if (error) { return callback(error) }
 						var references = normalizeDictionary(data.references)
 						var objs = normalizeArray(data.objects, references)

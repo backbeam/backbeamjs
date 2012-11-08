@@ -8,7 +8,7 @@
 	<script src="jquery.min.js"></script>
 	<script src="backbeam.js"></script>
 	<script>
-		var client = backbeam.createClient({ project:'callezeta', host:'backbeam.dev', port:'8080' })
+		var client = backbeam.createClient({ project:'callezeta', host:'backbeam.dev', port:'8080', env:'pro' })
 		client.select('event').query('join last 1 images').fetch(100, 0, function(error, objects) {
 			$.each(objects, function(i, obj) {
 				var li = $('<li></li>').text(obj.get('name'))
