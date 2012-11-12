@@ -1,169 +1,244 @@
 (function(undefined) {
-	window.backbeam = window.backbeam || {}
 
-	backbeam.createClient = function(options) {
-		options.host = options.host || 'backbeam.io'
-		options.port = options.port || '80'
-		options.env  = options.env  || 'dev'
+	var currentUser = null
+	var options     = {}
 
-		var fileURL = function(id, params) {
-			var params = params ? '?'+$.param(params) : ''
-			return 'http://'+options.project+'.'+options.host+':'+options.port+'/file/'+options.env+'/'+id+params
+	// function errorWithStatus(status, result) {
+
+	// }
+
+	// function errorWithResult(result) {
+
+	// }
+
+	// function errorWithError(error) {
+
+	// }
+
+	var request = function(method, path, params, callback) {
+		var prms = method !== 'GET' ? {_method:method} : {}
+		for (var key in params) { prms[key] = params[key] }
+
+		var url = 'http://api.'+options.env+'.'+options.project+'.'+options.host+':'+options.port+path
+		var req = $.ajax({
+			type:'GET',
+			url:url,
+			data:prms,
+			dataType:'jsonp',
+			success: function(data, status, xhr) {
+				callback(null, data)
+			},
+			// TODO: timeout
+		})
+		req.error(function(xhr, errorType, err) {
+			callback(err)
+		})
+	}
+
+	var empty = function(entity, _id, object, references) {
+		var commands   = {}
+		var values     = {}
+		var entity     = entity
+		var createdAt  = null
+		var updatedAt  = null
+		var identifier = _id || null
+
+		var obj = {
+			entity: function() {
+				return entity
+			},
+			createdAt: function() {
+				return createdAt
+			},
+			updatedAt: function() {
+				return updatedAt
+			},
+			id: function() {
+				return identifier
+			},
+			set: function(field, _new) {
+				values[field] = _new
+				commands[field] = _new
+			},
+			get: function(field) {
+				return values[field] || null
+			}
 		}
 
-		var request = function(method, path, params, callback) {
-			var prms = method !== 'GET' ? {_method:method} : {}
-			for (var key in params) { prms[key] = params[key] }
+		obj.save = function(callback) {
+			var method = null
+			var path   = null
+			if (identifier) {
+				method = 'PUT'
+				path   = '/data/'+entity+'/'+identifier
+			} else {
+				method = 'POST'
+				path   = '/data/'+entity
+			}
+			request(method, path, commands, function(error, data) {
+				if (error) { return callback(error) }
+				if (data.object) { fill(data.object) }
 
-			var url = 'http://api.'+options.env+'.'+options.project+'.'+options.host+':'+options.port+path
-			$.ajax({
-				type:'GET',
-				url:url,
-				data:prms,
-				dataType:'jsonp',
-				success: function(data, status, xhr) {
-					callback(null, data)
-				},
-				error: function(xhr, errorType, err) {
-					console.log('error', errorType, err)
-					callback(err)
+				if (entity === 'user') {
+					delete values['password']
 				}
+				if (entity === 'user' && method === 'POST') {
+					backbeam.logout()
+					if (data.status === 'Success') { // not PendingValidation
+						setCurrentUser(obj)
+					}
+				}
+				callback(null, obj, data.status)
 			})
 		}
 
-		var empty = function(entity) {
-			var obj = {
-				entity: entity,
-				createdAt: null,
-				updatedAt: null,
-				id: null,
-				values: {},
-				set: function(field, _new) {
-					this.values[field] = _new
-				},
-				get: function(field) {
-					return this.values[field]
-				}
-			}
+		obj.refresh = function(callback) {
+			// TODO: if not obj.id
+			request('GET', '/data/'+entity+'/'+identifier, {}, function(error, data) {
+				if (error) { return callback(error) }
+				if (data.object) { fill(data.object) }
+				callback(null, obj, data.status)
+			})
+		}
 
-			obj.insert = function(callback) {
-				request('POST', '/data/'+entity, obj.values, function(error, data) {
-					if (error) { return callback(error) }
-					if (data.object) { obj.fill(data.object) }
-					callback(null, obj, data.status)
-				})
-			}
+		obj.remove = function(callback) {
+			// TODO: if not obj.id
+			request('DELETE', '/data/'+entity+'/'+identifier, {}, function(error, data) {
+				if (error) { return callback(error) }
+				if (data.object) { fill(data.object) }
+				callback(null, obj, data.status)
+			})
+		}
 
-			obj.update = function(callback) {
-				// TODO: if not obj.id
-				request('PUT', '/data/'+entity+'/'+obj.id, obj.values, function(error, data) {
-					if (error) { return callback(error) }
-					if (data.object) { obj.fill(data.object) }
-					callback(null, obj, data.status)
-				})
-			}
+		obj.fileURL = function(params) {
+			// TODO: if entity !== 'file'
+			var params = params ? '?'+$.param(params) : ''
+			return 'http://'+options.project+'.'+options.host+':'+options.port+'/file/'+options.env+'/'+identifier+params
+		}
 
-			obj.remove = function(callback) {
-				// TODO: if not obj.id
-				request('DELETE', '/data/'+entity+'/'+obj.id, {}, function(error, data) {
-					if (error) { return callback(error) }
-					if (data.object) { obj.fill(data.object) }
-					callback(null, obj, data.status)
-				})
-			}
-
-			obj.fill = function(object, references) {
-				for (var field in object) {
-					var value = object[field]
-					if (field === 'created_at') {
-						obj.createdAt = new Date(value)
-					} else if (field === 'updated_at') {
-						obj.updatedAt = new Date(value)
-					} else if (field === 'id') {
-						obj.id = value
-					} else if (field === 'type') {
-						obj.entity = value
-					} else {
-						var i = field.indexOf('#')
-						if (i > 0) {
-							var type = field.substring(i+1, field.length)
-							// TODO: check types
-							if (type === 'r') {
-								if (value.constructor == Object) {
-									var arr = []
-									var objs = value.result
-									for (var j = 0; j < objs.length; j++) {
-										var id = objs[j]
-										arr.push(references[id])
-									}
-									value.result = arr
+		function fill(object, references) {
+			commands = {}
+			for (var field in object) {
+				var value = object[field]
+				if (field === 'created_at') {
+					createdAt = new Date(value)
+				} else if (field === 'updated_at') {
+					updatedAt = new Date(value)
+				} else if (field === 'id') {
+					identifier = value
+				} else if (field === 'type') {
+					entity = value
+				} else {
+					var i = field.indexOf('#')
+					if (i > 0) {
+						var type = field.substring(i+1, field.length)
+						// TODO: check types
+						if (type === 'r') {
+							if (value.constructor == Object) {
+								var arr = []
+								var objs = value.result
+								for (var j = 0; j < objs.length; j++) {
+									var id = objs[j]
+									arr.push(references[id])
 								}
+								value.result = arr
 							}
-							field = field.substring(0, i)
-							obj.set(field, value)
 						}
+						field = field.substring(0, i)
+						values[field] = value
 					}
 				}
 			}
-
-			return obj
 		}
 
-		var normalizeObject = function(object, references) {
-			var obj = empty(null)
-			obj.fill(object, references)
-			return obj
-		}
+		fill(object, references)
 
-		var normalizeArray = function(objects, references) {
-			var objs = []
-			for (var i = 0; i < objects.length; i++) {
-				var object = objects[i]
-				objs.push(normalizeObject(objects[i], references))
-			}
-			return objs
-		}
+		return obj
+	}
 
-		var normalizeDictionary = function(references) {
-			var refs = {}
-			for (var id in references) {
-				var object = references[id]
-				refs[id] = normalizeObject(object)
-				refs[id].id = id
-			}
-			return refs
-		}
+	var normalizeObject = function(object, references, id) {
+		return empty(null, id, object, references)
+	}
 
-		var select = function(entity) {
-			var q, params
-			return {
-				query: function() {
-					var args = Array.prototype.slice.call(arguments)
-					q = args[0]
-					if (args[1] && args[1].constructor == Array) { params = args[1] }
-					else { params = args.slice(1, args.length) }
-					return this
-				},
-				fetch: function(limit, offset, callback) {
-					request('GET', '/data/'+entity, { q:q, params:params, limit:limit, offset:offset }, function(error, data) {
-						if (error) { return callback(error) }
-						var references = normalizeDictionary(data.references)
-						var objs = normalizeArray(data.objects, references)
-						callback(null, objs)
-					})
-					return this
-				},
-				next: function(limit) {
-					return this
-				}
-			}
+	var normalizeArray = function(objects, references) {
+		var objs = []
+		for (var i = 0; i < objects.length; i++) {
+			var object = objects[i]
+			objs.push(normalizeObject(objects[i], references))
 		}
+		return objs
+	}
 
+	var normalizeDictionary = function(references) {
+		var refs = {}
+		for (var id in references) {
+			var object = references[id]
+			refs[id] = normalizeObject(object, null, id)
+		}
+		return refs
+	}
+
+	var select = function(entity) {
+		var q, params
 		return {
-			request: request,
-			select: select,
-			fileURL: fileURL,
-			empty: empty
+			query: function() {
+				var args = Array.prototype.slice.call(arguments)
+				q = args[0]
+				if (args[1] && args[1].constructor == Array) { params = args[1] }
+				else { params = args.slice(1, args.length) }
+				return this
+			},
+			fetch: function(limit, offset, callback) {
+				request('GET', '/data/'+entity, { q:q, params:params, limit:limit, offset:offset }, function(error, data) {
+					if (error) { return callback(error) }
+					var references = normalizeDictionary(data.references)
+					var objs = normalizeArray(data.objects, references)
+					callback(null, objs)
+				})
+				return this
+			},
+			next: function(limit) {
+				return this
+			}
 		}
 	}
+
+	window.backbeam = window.backbeam || {}
+
+	backbeam.configure = function(_options) {
+		options.host    = _options.host || options.host || 'backbeam.io'
+		options.port    = _options.port || options.port || '80'
+		options.env     = _options.env  || options.env  || 'dev'
+		options.project = _options.project
+	}
+
+	backbeam.select = select
+	backbeam.empty  = empty
+
+	function setCurrentUser(object) {
+		currentUser = object
+	}
+
+	backbeam.currentUser = function() {
+		return currentUser
+	}
+
+	backbeam.logout = function() {
+		currentUser = null
+	}
+
+	backbeam.login = function(email, password, callback) {
+		request('POST', '/user/email/login', {email:email, password:password}, function(error, data) {
+			if (error) { return callback(error) }
+			var object = null
+			if (data.object) {
+				object = backbeam.empty('user', null, data.object, null)
+				setCurrentUser(object)
+			}
+			callback(null, object)
+		})
+	}
+
+	// TODO: request password
+
 })()

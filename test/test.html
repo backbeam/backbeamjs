@@ -1,0 +1,19 @@
+<html>
+<head>
+	<meta charset="utf-8">
+	<title>Backbeam Tests</title>
+	<link rel="stylesheet" href="mocha.css" />
+</head>
+<body>
+	<div id="mocha"></div>
+	<script src="../jquery.min.js"></script>
+	<script src="../backbeam.js"></script>
+	<script src="mocha.js"></script>
+	<script src="chai.js"></script>
+	<script>mocha.setup('bdd')</script>
+	<script src="test-foo.js"></script>
+	<script>
+		mocha.globals(['jQuery*']).run()
+	</script>
+</body>
+</html>

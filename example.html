@@ -8,15 +8,15 @@
 	<script src="jquery.min.js"></script>
 	<script src="backbeam.js"></script>
 	<script>
-		var client = backbeam.createClient({ project:'callezeta', host:'backbeam.dev', port:'8080', env:'pro' })
-		client.select('event').query('join last 1 images').fetch(100, 0, function(error, objects) {
+		backbeam.configure({ project:'callezeta', host:'backbeam.dev', port:'8080', env:'pro' })
+		backbeam.select('event').query('join last 1 images').fetch(100, 0, function(error, objects) {
 			$.each(objects, function(i, obj) {
 				var li = $('<li></li>').text(obj.get('name'))
 				$('#list').append(li)
 				var images = obj.get('images').result
 				if (images && images.length > 0) {
 					var first = images[0]
-					var url = client.fileURL(first.id, {width:44, height:44})
+					var url = first.fileURL({width:44, height:44})
 					li.prepend($('<img>').attr('src', url))
 				}
 			})
