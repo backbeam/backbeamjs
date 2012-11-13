@@ -99,6 +99,30 @@ describe('Test backbeam', function() {
 		object.set('password', '123456')
 		object.save(function(error) {
 			chai.assert.ok(error)
+			chai.assert.equal(error.name, 'UserAlreadyExists')
+			done()
+		})
+	})
+
+	it('Unsuccessfull login. User not found', function(done) {
+		backbeam.login('foo@example.com', 'xxxx', function(error, object) {
+			chai.assert.ok(error)
+			chai.assert.equal(error.name, 'UserNotFound')
+			done()
+		})
+	})
+
+	it('Unsuccessfull login. Wrong password', function(done) {
+		backbeam.login('gimenete@gmail.com', 'xxxx', function(error, object) {
+			chai.assert.ok(error)
+			chai.assert.equal(error.name, 'InvalidCredentials')
+			done()
+		})
+	})
+
+	it('Request password reset', function(done) {
+		backbeam.requestPasswordReset('gimenete@gmail.com', function(error, object) {
+			chai.assert.isNull(error)
 			done()
 		})
 	})

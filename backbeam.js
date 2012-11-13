@@ -3,17 +3,15 @@
 	var currentUser = null
 	var options     = {}
 
-	// function errorWithStatus(status, result) {
+	function BackbeamError(status, message) {
+		this.name = status
+		this.message = message || ''
+	}
+	BackbeamError.prototype = Error.prototype
 
-	// }
-
-	// function errorWithResult(result) {
-
-	// }
-
-	// function errorWithError(error) {
-
-	// }
+	function errorWithStatus(status) {
+		return new Error()
+	}
 
 	var request = function(method, path, params, callback) {
 		var prms = method !== 'GET' ? {_method:method} : {}
@@ -77,6 +75,9 @@
 			}
 			request(method, path, commands, function(error, data) {
 				if (error) { return callback(error) }
+				var status = data.status
+				if (!status) { return callback(new BackbeamError('InvalidResponse')) }
+				if (status !== 'Success' && status !== 'PendingValidation') { return callback(new BackbeamError(status)) }
 				if (data.object) { fill(data.object) }
 
 				if (entity === 'user') {
@@ -88,7 +89,7 @@
 						setCurrentUser(obj)
 					}
 				}
-				callback(null, obj, data.status)
+				callback(null, obj)
 			})
 		}
 
@@ -96,8 +97,11 @@
 			// TODO: if not obj.id
 			request('GET', '/data/'+entity+'/'+identifier, {}, function(error, data) {
 				if (error) { return callback(error) }
+				var status = data.status
+				if (!status) { return callback(new BackbeamError('InvalidResponse')) }
+				if (status !== 'Success') { return callback(new BackbeamError(status)) }
 				if (data.object) { fill(data.object) }
-				callback(null, obj, data.status)
+				callback(null, obj)
 			})
 		}
 
@@ -105,8 +109,11 @@
 			// TODO: if not obj.id
 			request('DELETE', '/data/'+entity+'/'+identifier, {}, function(error, data) {
 				if (error) { return callback(error) }
+				var status = data.status
+				if (!status) { return callback(new BackbeamError('InvalidResponse')) }
+				if (status !== 'Success') { return callback(new BackbeamError(status)) }
 				if (data.object) { fill(data.object) }
-				callback(null, obj, data.status)
+				callback(null, obj)
 			})
 		}
 
@@ -230,6 +237,9 @@
 	backbeam.login = function(email, password, callback) {
 		request('POST', '/user/email/login', {email:email, password:password}, function(error, data) {
 			if (error) { return callback(error) }
+			var status = data.status
+			if (!status) { return callback(new BackbeamError('InvalidResponse')) }
+			if (status !== 'Success') { return callback(new BackbeamError(status)) }
 			var object = null
 			if (data.object) {
 				object = backbeam.empty('user', null, data.object, null)
@@ -239,6 +249,14 @@
 		})
 	}
 
-	// TODO: request password
+	backbeam.requestPasswordReset = function(email, callback) {
+		request('POST', '/user/email/lostpassword', {email:email}, function(error, data) {
+			if (error) { return callback(error) }
+			var status = data.status
+			if (!status) { return callback(new BackbeamError('InvalidResponse')) }
+			if (status !== 'Success') { return callback(new BackbeamError(status)) }
+			callback(null)
+		})
+	}
 
 })()
