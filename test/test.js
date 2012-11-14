@@ -64,6 +64,7 @@ describe('Test backbeam', function() {
 		backbeam.select('place').query('where type=?', ['Terraza']).fetch(100, 0, function(error, objects) {
 			chai.assert.isNull(error)
 			chai.assert.equal(objects.length, 1)
+			chai.assert.equal(objects[0].entity(), 'place')
 			chai.assert.equal(objects[0].get('name'), 'Final name')
 			chai.assert.equal(objects[0].get('description'), 'Some description')
 			done()

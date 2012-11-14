@@ -9,10 +9,6 @@
 	}
 	BackbeamError.prototype = Error.prototype
 
-	function errorWithStatus(status) {
-		return new Error()
-	}
-
 	var request = function(method, path, params, callback) {
 		var prms = method !== 'GET' ? {_method:method} : {}
 		for (var key in params) { prms[key] = params[key] }
@@ -31,6 +27,23 @@
 		req.error(function(xhr, errorType, err) {
 			callback(err)
 		})
+	}
+
+	function stringFromObject(obj) {
+		if (typeof obj === 'string') {
+			return obj
+		}
+		if (typeof obj === 'number') {
+			return ''+obj
+		}
+		if (typeof obj.id === 'function') {
+			return obj.id()
+		}
+		if (obj.constructor == Date) {
+			return ''+obj.getTime()
+		}
+		// TODO: location
+		return null
 	}
 
 	var empty = function(entity, _id, object, references) {
@@ -54,9 +67,9 @@
 			id: function() {
 				return identifier
 			},
-			set: function(field, _new) {
-				values[field] = _new
-				commands[field] = _new
+			set: function(field, value) {
+				values[field] = value
+				commands[field] = stringFromObject(value)
 			},
 			get: function(field) {
 				return values[field] || null
@@ -163,15 +176,15 @@
 		return obj
 	}
 
-	var normalizeObject = function(object, references, id) {
-		return empty(null, id, object, references)
+	var normalizeObject = function(object, references, id, entity) {
+		return empty(entity, id, object, references)
 	}
 
-	var normalizeArray = function(objects, references) {
+	var normalizeArray = function(entity, objects, references) {
 		var objs = []
 		for (var i = 0; i < objects.length; i++) {
 			var object = objects[i]
-			objs.push(normalizeObject(objects[i], references))
+			objs.push(normalizeObject(objects[i], references, null, entity))
 		}
 		return objs
 	}
@@ -191,15 +204,23 @@
 			query: function() {
 				var args = Array.prototype.slice.call(arguments)
 				q = args[0]
-				if (args[1] && args[1].constructor == Array) { params = args[1] }
-				else { params = args.slice(1, args.length) }
+				var prms = null
+				if (args[1] && args[1].constructor == Array) { prms = args[1] }
+				else { prms = args.slice(1, args.length) }
+				if (prms) {
+					params = prms
+					for (var i = 0; i < params.length; i++) {
+						params[i] = stringFromObject(params[i])
+					}
+				}
+				
 				return this
 			},
 			fetch: function(limit, offset, callback) {
 				request('GET', '/data/'+entity, { q:q, params:params, limit:limit, offset:offset }, function(error, data) {
 					if (error) { return callback(error) }
 					var references = normalizeDictionary(data.references)
-					var objs = normalizeArray(data.objects, references)
+					var objs = normalizeArray(entity, data.objects, references)
 					callback(null, objs)
 				})
 				return this
