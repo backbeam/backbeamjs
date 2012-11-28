@@ -2,6 +2,7 @@
 
 	var currentUser = null
 	var options     = {}
+	var socket      = null
 
 	function BackbeamError(status, message) {
 		this.name = status
@@ -15,10 +16,10 @@
 
 		var url = 'http://api.'+options.env+'.'+options.project+'.'+options.host+':'+options.port+path
 		var req = $.ajax({
-			type:'GET',
-			url:url,
-			data:prms,
-			dataType:'jsonp',
+			type: 'GET',
+			url: url,
+			data: prms,
+			dataType: 'jsonp',
 			success: function(data, status, xhr) {
 				callback(null, data)
 			},
@@ -69,7 +70,7 @@
 			},
 			set: function(field, value) {
 				values[field] = value
-				commands[field] = stringFromObject(value)
+				commands['set-'+field] = stringFromObject(value)
 			},
 			get: function(field) {
 				return values[field] || null
@@ -233,11 +234,57 @@
 
 	window.backbeam = window.backbeam || {}
 
-	backbeam.configure = function(_options) {
+	backbeam.configure  = function(_options, callback) {
 		options.host    = _options.host || options.host || 'backbeam.io'
 		options.port    = _options.port || options.port || '80'
 		options.env     = _options.env  || options.env  || 'dev'
 		options.project = _options.project
+
+		if (_options.realtime === true) {
+			var url = 'http://'+options.host+':'+options.port+'/socket.io/socket.io.js'
+			$.ajax({
+				url: url,
+				dataType: 'script',
+				success: function() {
+					socket = io.connect('http://'+options.host+':'+options.port)
+					callback && callback()
+				},
+				failure: function() {
+					console.log('err')
+					// TODO
+				}
+			})
+		} else {
+			callback && callback()
+		}
+	}
+
+	backbeam.setEventHandler = function(handler) {
+		if (!socket) return false;
+		socket.on('msg', handler)
+		return true
+	}
+
+	function roomName(room) {
+		return options.project+'/'+options.env+'/'+room
+	}
+
+	backbeam.subscribeToEvents = function(room) {
+		if (!socket) return false;
+		socket.emit('subscribe', { room:roomName(room) })
+		return true
+	}
+
+	backbeam.unsubscribeFromEvents = function(room) {
+		if (!socket) return false;
+		socket.emit('unsubscribe', { room:roomName(room) })
+		return true
+	}
+
+	backbeam.sendEvent = function(room, data) {
+		if (!socket) return false;
+		socket.emit('publish', { room:roomName(room), data:data })
+		return true
 	}
 
 	backbeam.select = select

@@ -6,10 +6,20 @@
 <body>
 	<ul id="list"></ul>
 	<script src="jquery.min.js"></script>
+	<script src="hmac-sha1.js"></script>
 	<script src="backbeam.js"></script>
 	<script>
-		backbeam.configure({ project:'callezeta', host:'backbeam.dev', port:'8080', env:'pro' })
-		backbeam.select('event').query('join last 1 images').fetch(100, 0, function(error, objects) {
+		backbeam.configure({ project:'callezeta', env:'dev', realtime:true }, function(err) {
+			backbeam.setEventHandler(function(data) {
+				console.log('received', data)
+			})
+
+			backbeam.subscribeToEvents('foo')
+
+			backbeam.sendEvent('foo', {say:'hello world!'})
+			console.log('message sent')
+		})
+		backbeam.select('file').fetch(100, 0, function(error, objects) {
 			$.each(objects, function(i, obj) {
 				var li = $('<li></li>').text(obj.get('name'))
 				$('#list').append(li)
@@ -21,6 +31,9 @@
 				}
 			})
 		})
+
+		var hash = CryptoJS.HmacSHA1("Message", "Secret Passphrase");
+		console.log('hash', hash.toString(CryptoJS.enc.Hex))
 
 		// var e = client.empty('event')
 		// e.set('name', 'A new event')
