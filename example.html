@@ -9,31 +9,35 @@
 	<script src="hmac-sha1.js"></script>
 	<script src="backbeam.js"></script>
 	<script>
-		backbeam.configure({ project:'callezeta', env:'dev', realtime:true }, function(err) {
-			backbeam.setEventHandler(function(data) {
-				console.log('received', data)
-			})
+		backbeam.configure({ project:'callezeta', env:'dev', realtime:true, host:'backbeam.dev', port:8080 }, function(err) {
+			// backbeam.setEventHandler(function(data) {
+			// 	console.log('received', data)
+			// })
 
-			backbeam.subscribeToEvents('foo')
+			// backbeam.subscribeToEvents('foo')
 
-			backbeam.sendEvent('foo', {say:'hello world!'})
-			console.log('message sent')
+			// backbeam.sendEvent('foo', {say:'hello world!'})
+			// console.log('message sent')
 		})
-		backbeam.select('file').fetch(100, 0, function(error, objects) {
-			$.each(objects, function(i, obj) {
-				var li = $('<li></li>').text(obj.get('name'))
-				$('#list').append(li)
-				var images = obj.get('images').result
-				if (images && images.length > 0) {
-					var first = images[0]
-					var url = first.fileURL({width:44, height:44})
-					li.prepend($('<img>').attr('src', url))
+		backbeam.select('event').query('join last 5 images').fetch(1, 0, function(error, objects) {
+			console.log('error', error)
+			for (var i=0; i<objects.length; i++) {
+				console.log('id', objects[0].id())
+				var images = objects[i].get('images')
+				if (images && images.result.length > 0) {
+					console.log('images', images.result[0].get('filename'))
 				}
-			})
+			}
 		})
 
-		var hash = CryptoJS.HmacSHA1("Message", "Secret Passphrase");
-		console.log('hash', hash.toString(CryptoJS.enc.Hex))
+		// var pais = backbeam.empty('pais')
+		// pais.set('nombre', 'España')
+		// pais.save(function(err) {
+		// 	console.log('saved', pais.id())
+		// })
+
+		// var hash = CryptoJS.HmacSHA1("Message", "Secret Passphrase");
+		// console.log('hash', hash.toString(CryptoJS.enc.Hex))
 
 		// var e = client.empty('event')
 		// e.set('name', 'A new event')

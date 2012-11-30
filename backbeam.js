@@ -10,6 +10,17 @@
 	}
 	BackbeamError.prototype = Error.prototype
 
+	// function fireCallback() {
+	// 	var args = Array.prototype.slice.call(arguments)
+	// 	var callback = args[0]
+	// 	var params = args.slice(1, args.length)
+	// 	if (callback === console.log) {
+	// 		callback.apply(console, params)
+	// 	} else {
+	// 		callback && callback.apply(null, params)
+	// 	}
+	// }
+
 	var request = function(method, path, params, callback) {
 		var prms = method !== 'GET' ? {_method:method} : {}
 		for (var key in params) { prms[key] = params[key] }
@@ -72,8 +83,21 @@
 				values[field] = value
 				commands['set-'+field] = stringFromObject(value)
 			},
+			add: function(field, value) {
+				commands['add-'+field] = stringFromObject(value)
+			},
+			rem: function(field, value) {
+				commands['rem-'+field] = stringFromObject(value)
+			},
 			get: function(field) {
 				return values[field] || null
+			},
+			fields: function() {
+				var arr = []
+				for (var key in values) {
+					arr.push(key)
+				}
+				return arr
 			}
 		}
 
@@ -163,6 +187,8 @@
 									arr.push(references[id])
 								}
 								value.result = arr
+							} else {
+								value = references[value]
 							}
 						}
 						field = field.substring(0, i)
@@ -182,6 +208,7 @@
 	}
 
 	var normalizeArray = function(entity, objects, references) {
+		if (!objects) return null
 		var objs = []
 		for (var i = 0; i < objects.length; i++) {
 			var object = objects[i]
@@ -222,6 +249,7 @@
 					if (error) { return callback(error) }
 					var references = normalizeDictionary(data.references)
 					var objs = normalizeArray(entity, data.objects, references)
+					// fireCallback(callback, null, objs)
 					callback(null, objs)
 				})
 				return this
