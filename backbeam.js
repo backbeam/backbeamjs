@@ -48,10 +48,10 @@
 		if (typeof obj === 'number') {
 			return ''+obj
 		}
-		if (typeof obj.id === 'function') {
+		if (obj && obj.id && typeof obj.id === 'function') {
 			return obj.id()
 		}
-		if (obj.constructor == Date) {
+		if (obj && obj.constructor && obj.constructor == Date) {
 			return ''+obj.getTime()
 		}
 		// TODO: location
@@ -188,11 +188,18 @@
 								}
 								value.result = arr
 							} else {
-								value = references[value]
+								if (references) {
+									value = references[value]
+								} else {
+									value = null
+								}
 							}
 						}
-						field = field.substring(0, i)
-						values[field] = value
+
+						if (value) {
+							field = field.substring(0, i)
+							values[field] = value
+						}
 					}
 				}
 			}
