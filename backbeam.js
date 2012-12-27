@@ -21,10 +21,38 @@
 	// 	}
 	// }
 
-	var request = function(method, path, params, callback) {
-		var prms = method !== 'GET' ? {_method:method} : {}
-		for (var key in params) { prms[key] = params[key] }
+	var signature = function(data) {
+		var tokens = []
+		var keys = []
+		for (var key in data) {
+			if (data.hasOwnProperty(key)) keys.push(key)
+		}
+		keys.sort()
+		for (var j = 0; j < keys.length; j++) {
+			var key = keys[j]
+			var value = data[key]
+			if (value.constructor == Array) {
+				value.sort()
+				for (var i = 0; i < value.length; i++) {
+					tokens.push(key+'='+value[i])
+				}
+			} else {
+				tokens.push(key+'='+value)
+			}
+		}
+		var signatureBaseString = tokens.join('&')
+		return CryptoJS.HmacSHA1(signatureBaseString, options.secret).toString(CryptoJS.enc.Base64)
+	}
 
+	var request = function(method, path, params, callback) {
+		var prms = {}
+		for (var key in params) { prms[key] = params[key] }
+		prms['nonce'] = CryptoJS.SHA1(Date.now()+':'+Math.random()).toString(CryptoJS.enc.Hex)
+		prms['time'] = Date.now().toString()
+		prms['key'] = options.shared
+		prms['signature'] = signature(prms)
+
+		if (method !== 'GET') prms._method = method
 		var url = 'http://api.'+options.env+'.'+options.project+'.'+options.host+':'+options.port+path
 		var req = $.ajax({
 			type: 'GET',
@@ -41,15 +69,19 @@
 		})
 	}
 
-	function stringFromObject(obj) {
+	function stringFromObject(obj, addEntity) {
 		if (typeof obj === 'string') {
 			return obj
 		}
 		if (typeof obj === 'number') {
 			return ''+obj
 		}
-		if (obj && obj.id && typeof obj.id === 'function') {
-			return obj.id()
+		if (obj && obj.id && typeof obj.id === 'function' && obj.entity && typeof obj.entity === 'function') {
+			if (addEntity) {
+				return obj.entity()+'/'+obj.id()
+			} else {
+				return obj.id()
+			}
 		}
 		if (obj && obj.constructor && obj.constructor == Date) {
 			return ''+obj.getTime()
@@ -80,17 +112,34 @@
 				return identifier
 			},
 			set: function(field, value) {
+				var val = stringFromObject(value)
+				if (val === null) { return false }
 				values[field] = value
-				commands['set-'+field] = stringFromObject(value)
+				commands['set-'+field] = val
+				return true
 			},
-			add: function(field, value) {
-				commands['add-'+field] = stringFromObject(value)
+			add: function(field, obj) {
+				var val = obj.id()
+				if (!val) { return false }
+				var key = 'add-'+field, arr = commands[key]
+				if (!arr) {
+					arr = []; commands[key] = arr
+				}
+				arr.push(val)
+				return true
 			},
-			rem: function(field, value) {
-				commands['rem-'+field] = stringFromObject(value)
+			rem: function(field, obj) {
+				var val = obj.id()
+				if (!val) { return false }
+				var key = 'rem-'+field, arr = commands[key]
+				if (!arr) {
+					arr = []; commands[key] = arr
+				}
+				arr.push(val)
+				return true
 			},
 			get: function(field) {
-				return values[field] || null
+				return values[field] || null // TODO: if empty string
 			},
 			fields: function() {
 				var arr = []
@@ -245,15 +294,17 @@
 				if (prms) {
 					params = prms
 					for (var i = 0; i < params.length; i++) {
-						params[i] = stringFromObject(params[i])
+						params[i] = stringFromObject(params[i], true) // TODO: if returns null?
 					}
 				}
-				
 				return this
 			},
 			fetch: function(limit, offset, callback) {
-				request('GET', '/data/'+entity, { q:q, params:params, limit:limit, offset:offset }, function(error, data) {
+				request('GET', '/data/'+entity, { q:q || '', params:params || [], limit:limit, offset:offset }, function(error, data) {
 					if (error) { return callback(error) }
+					var status = data.status
+					if (!status) { return callback(new BackbeamError('InvalidResponse')) }
+					if (status !== 'Success') { return callback(new BackbeamError(status)) }
 					var references = normalizeDictionary(data.references)
 					var objs = normalizeArray(entity, data.objects, references)
 					// fireCallback(callback, null, objs)
@@ -274,6 +325,8 @@
 		options.port    = _options.port || options.port || '80'
 		options.env     = _options.env  || options.env  || 'dev'
 		options.project = _options.project
+		options.shared  = _options.shared
+		options.secret  = _options.secret
 
 		if (_options.realtime === true) {
 			var url = 'http://'+options.host+':'+options.port+'/socket.io/socket.io.js'

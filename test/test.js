@@ -1,6 +1,13 @@
 
 before(function(done) {
-	backbeam.configure({ project:'callezeta', host:'backbeam.dev', port:'8080', env:'dev' })
+	backbeam.configure({
+		project:'callezeta',
+		host:'backbeam.dev',
+		shared: '5bd82df918d542f181f9308008f229c335812ba4',
+		secret: 'c7b7726df5a0e96304cd6e1d44e86036038191826b52bc11dff6e2a626ea1c46b0344dcc069a14dd',
+		port:'8080',
+		env:'dev'
+	})
 	done()
 })
 

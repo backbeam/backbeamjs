@@ -7,9 +7,18 @@
 	<ul id="list"></ul>
 	<script src="jquery.min.js"></script>
 	<script src="hmac-sha1.js"></script>
+	<script src="enc-base64.js"></script>
 	<script src="backbeam.js"></script>
 	<script>
-		backbeam.configure({ project:'callezeta', env:'dev', realtime:true, host:'backbeam.dev', port:8080 }, function(err) {
+		backbeam.configure({
+			project:'callezeta',
+			env:'dev',
+			shared: '5bd82df918d542f181f9308008f229c335812ba4',
+			secret: 'c7b7726df5a0e96304cd6e1d44e86036038191826b52bc11dff6e2a626ea1c46b0344dcc069a14dd',
+			realtime:true,
+			host:'backbeam.dev',
+			port:8080
+		}, function(err) {
 			// backbeam.setEventHandler(function(data) {
 			// 	console.log('received', data)
 			// })
