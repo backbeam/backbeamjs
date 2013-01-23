@@ -41,32 +41,71 @@
 			}
 		}
 		var signatureBaseString = tokens.join('&')
-		return CryptoJS.HmacSHA1(signatureBaseString, options.secret).toString(CryptoJS.enc.Base64)
+		if (typeof CryptoJS !== 'undefined') {
+			return CryptoJS.HmacSHA1(signatureBaseString, options.secret).toString(CryptoJS.enc.Base64)
+		} else if (typeof require !== 'undefined') {
+			var crypto = require('crypto')
+			return crypto.createHmac('sha1', new Buffer(options.secret, 'utf8')).update(new Buffer(signatureBaseString, 'utf8')).digest('base64')
+		} else {
+			throw new Error('CryptoJS library not found and no crypto module found')
+		}
+	}
+
+	function nonce() {
+		var random = Date.now()+':'+Math.random()
+		if (typeof CryptoJS !== 'undefined') {
+			return CryptoJS.SHA1(random).toString(CryptoJS.enc.Hex)
+		} else if (typeof require !== 'undefined') {
+			var crypto = require('crypto')
+			return crypto.createHash('sha1').update(random).digest('hex')
+		} else {
+			throw new Error('CryptoJS library not found and no crypto module found')
+		}
 	}
 
 	var request = function(method, path, params, callback) {
 		var prms = {}
 		for (var key in params) { prms[key] = params[key] }
-		prms['nonce'] = CryptoJS.SHA1(Date.now()+':'+Math.random()).toString(CryptoJS.enc.Hex)
+		prms['nonce'] = nonce()
 		prms['time'] = Date.now().toString()
 		prms['key'] = options.shared
 		prms['signature'] = signature(prms)
 
-		if (method !== 'GET') prms._method = method
 		var url = 'http://api.'+options.env+'.'+options.project+'.'+options.host+':'+options.port+path
-		var req = $.ajax({
-			type: 'GET',
-			url: url,
-			data: prms,
-			dataType: 'jsonp',
-			success: function(data, status, xhr) {
+		if (typeof $ !== 'undefined') {
+			if (method !== 'GET') prms._method = method
+			var req = $.ajax({
+				type: 'GET',
+				url: url,
+				data: prms,
+				dataType: 'jsonp',
+				success: function(data, status, xhr) {
+					callback(null, data)
+				},
+				// TODO: timeout
+			})
+			req.error(function(xhr, errorType, err) {
+				callback(err)
+			})
+		} else if (typeof require !== 'undefined') {
+			var opts = { url:url, method:method }
+			if (method === 'GET') {
+				opts.qs = prms
+			} else {
+				opts.form = prms
+			}
+			require('request')(opts, function(err, response, body) {
+				if (err) { return callback(err) }
+				try {
+					var data = JSON.parse(body)
+				} catch(e) {
+					return callback(e)
+				}
 				callback(null, data)
-			},
-			// TODO: timeout
-		})
-		req.error(function(xhr, errorType, err) {
-			callback(err)
-		})
+			})
+		} else {
+			throw new Error('jQuery library not found and no "request" module found')
+		}
 	}
 
 	function stringFromObject(obj, addEntity) {
@@ -318,7 +357,12 @@
 		}
 	}
 
-	window.backbeam = window.backbeam || {}
+	if (typeof window !== 'undefined') {
+		var backbeam = window.backbeam = window.backbeam || {}
+	}
+	if (typeof module !== 'undefined') {
+		var backbeam = module.exports = {}
+	}
 
 	backbeam.configure  = function(_options, callback) {
 		options.host    = _options.host || options.host || 'backbeam.io'
@@ -329,6 +373,7 @@
 		options.secret  = _options.secret
 
 		if (_options.realtime === true) {
+			// TODO: this only works in the browser
 			var url = 'http://'+options.host+':'+options.port+'/socket.io/socket.io.js'
 			$.ajax({
 				url: url,

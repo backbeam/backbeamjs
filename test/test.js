@@ -1,3 +1,8 @@
+if (typeof exports !== 'undefined') {
+	var backbeam = require('../backbeam')
+	var chai = require('chai')
+	chai.Assertion.includeStack = true
+}
 
 before(function(done) {
 	backbeam.configure({
@@ -24,7 +29,7 @@ describe('Test backbeam', function() {
 		var location = {}
 
 		var object = backbeam.empty('place')
-		object.set('name', 'A new place')
+		object.set('name', 'A new place ñ')
 		object.set('location', location)
 		object.save(function(error) {
 			chai.assert.isNull(error)

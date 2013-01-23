@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 	<meta charset="utf-8">
+	<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 </head>
 <body>
 	<ul id="list"></ul>
@@ -9,7 +10,7 @@
 	<script src="hmac-sha1.js"></script>
 	<script src="enc-base64.js"></script>
 	<script src="backbeam.js"></script>
-	<script>
+	<script charset="UTF-8">
 		backbeam.configure({
 			project:'callezeta',
 			env:'dev',
@@ -45,8 +46,8 @@
 		// 	console.log('saved', pais.id())
 		// })
 
-		// var hash = CryptoJS.HmacSHA1("Message", "Secret Passphrase");
-		// console.log('hash', hash.toString(CryptoJS.enc.Hex))
+		var hash = CryptoJS.HmacSHA1("\u00f1", "Secret Passphrase");
+		console.log('hash', hash.toString(CryptoJS.enc.Base64))
 
 		// var e = client.empty('event')
 		// e.set('name', 'A new event')
