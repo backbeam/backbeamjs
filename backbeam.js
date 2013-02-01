@@ -129,7 +129,7 @@
 		return null
 	}
 
-	var empty = function(entity, _id, object, references) {
+	var empty = function(entity, _id) {
 		var commands   = {}
 		var values     = {}
 		var entity     = entity
@@ -177,6 +177,15 @@
 				arr.push(val)
 				return true
 			},
+			incr: function(field, value) {
+				var val = parseFloat(value) || 1
+				values[field] += val // TODO: if not set previously
+				commands['incr-'+field] = val
+			},
+			del: function(field) {
+				delete values[field]
+				commands['del-'+field] = '1'
+			},
 			get: function(field) {
 				return values[field] || null // TODO: if empty string
 			},
@@ -204,11 +213,10 @@
 				var status = data.status
 				if (!status) { return callback(new BackbeamError('InvalidResponse')) }
 				if (status !== 'Success' && status !== 'PendingValidation') { return callback(new BackbeamError(status)) }
-				if (data.object) { fill(data.object) }
+				var refs = {}; refs[data.id] = obj
+				identifier = data.id
+				var objects = objectsFromValues(data.objects, refs)
 
-				if (entity === 'user') {
-					delete values['password']
-				}
 				if (entity === 'user' && method === 'POST') {
 					backbeam.logout()
 					if (data.status === 'Success') { // not PendingValidation
@@ -220,25 +228,27 @@
 		}
 
 		obj.refresh = function(callback) {
-			// TODO: if not obj.id
+			// TODO: if not identifier
 			request('GET', '/data/'+entity+'/'+identifier, {}, function(error, data) {
 				if (error) { return callback(error) }
 				var status = data.status
 				if (!status) { return callback(new BackbeamError('InvalidResponse')) }
 				if (status !== 'Success') { return callback(new BackbeamError(status)) }
-				if (data.object) { fill(data.object) }
+				var refs = {}; refs[data.id] = obj
+				var objects = objectsFromValues(data.objects, refs)
 				callback(null, obj)
 			})
 		}
 
 		obj.remove = function(callback) {
-			// TODO: if not obj.id
+			// TODO: if not identifier
 			request('DELETE', '/data/'+entity+'/'+identifier, {}, function(error, data) {
 				if (error) { return callback(error) }
 				var status = data.status
 				if (!status) { return callback(new BackbeamError('InvalidResponse')) }
 				if (status !== 'Success') { return callback(new BackbeamError(status)) }
-				if (data.object) { fill(data.object) }
+				var refs = {}; refs[data.id] = obj
+				var objects = objectsFromValues(data.objects, refs)
 				callback(null, obj)
 			})
 		}
@@ -249,18 +259,14 @@
 			return 'http://'+options.project+'.'+options.host+':'+options.port+'/file/'+options.env+'/'+identifier+params
 		}
 
-		function fill(object, references) {
+		obj._fill = function(vals, references) {
 			commands = {}
-			for (var field in object) {
-				var value = object[field]
+			for (var field in vals) {
+				var value = vals[field]
 				if (field === 'created_at') {
 					createdAt = new Date(value)
 				} else if (field === 'updated_at') {
 					updatedAt = new Date(value)
-				} else if (field === 'id') {
-					identifier = value
-				} else if (field === 'type') {
-					entity = value
 				} else {
 					var i = field.indexOf('#')
 					if (i > 0) {
@@ -293,32 +299,22 @@
 			}
 		}
 
-		fill(object, references)
-
 		return obj
 	}
 
-	var normalizeObject = function(object, references, id, entity) {
-		return empty(entity, id, object, references)
-	}
-
-	var normalizeArray = function(entity, objects, references) {
-		if (!objects) return null
-		var objs = []
-		for (var i = 0; i < objects.length; i++) {
-			var object = objects[i]
-			objs.push(normalizeObject(objects[i], references, null, entity))
+	var objectsFromValues = function(values, objects) {
+		objects = objects || {}
+		for (var id in values) {
+			var obj = objects[id]
+			if (obj) continue
+			objects[id] = empty(values[id].type, id)
 		}
-		return objs
-	}
-
-	var normalizeDictionary = function(references) {
-		var refs = {}
-		for (var id in references) {
-			var object = references[id]
-			refs[id] = normalizeObject(object, null, id)
+		for (var id in values) {
+			var obj = objects[id]
+			var dict = values[id]
+			obj._fill(dict, objects)
 		}
-		return refs
+		return objects
 	}
 
 	var select = function(entity) {
@@ -344,9 +340,11 @@
 					var status = data.status
 					if (!status) { return callback(new BackbeamError('InvalidResponse')) }
 					if (status !== 'Success') { return callback(new BackbeamError(status)) }
-					var references = normalizeDictionary(data.references)
-					var objs = normalizeArray(entity, data.objects, references)
-					// fireCallback(callback, null, objs)
+					var objects = objectsFromValues(data.objects, null)
+					var objs = []
+					for (var i = 0; i < data.ids.length; i++) {
+						objs.push(objects[data.ids[i]])
+					}
 					callback(null, objs)
 				})
 				return this
@@ -365,7 +363,7 @@
 	}
 
 	backbeam.configure  = function(_options, callback) {
-		options.host    = _options.host || options.host || 'backbeam.io'
+		options.host    = _options.host || options.host || 'backbeamapps.com'
 		options.port    = _options.port || options.port || '80'
 		options.env     = _options.env  || options.env  || 'dev'
 		options.project = _options.project
@@ -441,12 +439,12 @@
 			var status = data.status
 			if (!status) { return callback(new BackbeamError('InvalidResponse')) }
 			if (status !== 'Success') { return callback(new BackbeamError(status)) }
-			var object = null
-			if (data.object) {
-				object = backbeam.empty('user', null, data.object, null)
-				setCurrentUser(object)
+			var objects = objectsFromValues(data.objects, null)
+			var user = objects[data.id]
+			if (user) {
+				setCurrentUser(user) // TODO: data.auth
 			}
-			callback(null, object)
+			callback(null, user)
 		})
 	}
 
