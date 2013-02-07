@@ -1,8 +1,9 @@
 (function(undefined) {
 
-	var currentUser = null
-	var options     = {}
-	var socket      = null
+	var currentUser   = null
+	var options       = {}
+	var socket        = null
+	var roomDelegates = {}
 
 	function BackbeamError(status, message) {
 		this.name = status
@@ -195,6 +196,15 @@
 					arr.push(key)
 				}
 				return arr
+			},
+			toJSON: function () {
+				var o = {}
+				for (var key in values) {
+					if (values.hasOwnProperty(key)) {
+						o[key] = values[key]
+					}
+				}
+				return o
 			}
 		}
 
@@ -372,12 +382,26 @@
 
 		if (_options.realtime === true) {
 			// TODO: this only works in the browser
-			var url = 'http://'+options.host+':'+options.port+'/socket.io/socket.io.js'
+			var url = 'http://api.'+options.env+'.'+options.project+'.'+options.host+':'+options.port+'/socket.io/socket.io.js'
 			$.ajax({
 				url: url,
 				dataType: 'script',
 				success: function() {
 					socket = io.connect('http://'+options.host+':'+options.port)
+					socket.on('msg', function(message) {
+						if (message.room && message.data) {
+							var arr = roomDelegates[message.room]
+							var prefix = roomName('')
+							if (message.room.indexOf(prefix) === 0) {
+								var event = message.room.substring(prefix.length)
+								if (arr) {
+									for (var i = 0; i < arr.length; i++) {
+										arr[i] && arr[i](event, message.data)
+									}
+								}
+							}
+						}
+					})
 					callback && callback()
 				},
 				failure: function() {
@@ -390,31 +414,36 @@
 		}
 	}
 
-	backbeam.setEventHandler = function(handler) {
+	function roomName(event) {
+		return options.project+'/'+options.env+'/'+event
+	}
+
+	backbeam.subscribeToEvents = function(event, delegate) {
 		if (!socket) return false;
-		socket.on('msg', handler)
+		var room = roomName(event)
+		var arr = roomDelegates[room]
+		if (!arr) {
+			arr = roomDelegates[room] = []
+			arr.push(delegate)
+		}
+		socket.emit('subscribe', { room:room })
 		return true
 	}
 
-	function roomName(room) {
-		return options.project+'/'+options.env+'/'+room
-	}
-
-	backbeam.subscribeToEvents = function(room) {
+	backbeam.unsubscribeFromEvents = function(event, delegate) {
+		var room = roomName(event)
+		var arr = roomDelegates[room]
+		if (!arr) return
+		var index = arr.indexOf(delegate)
+		arr.splice(index, 1)
 		if (!socket) return false;
-		socket.emit('subscribe', { room:roomName(room) })
+		socket.emit('unsubscribe', { room:room })
 		return true
 	}
 
-	backbeam.unsubscribeFromEvents = function(room) {
+	backbeam.sendEvent = function(event, data) {
 		if (!socket) return false;
-		socket.emit('unsubscribe', { room:roomName(room) })
-		return true
-	}
-
-	backbeam.sendEvent = function(room, data) {
-		if (!socket) return false;
-		socket.emit('publish', { room:roomName(room), data:data })
+		socket.emit('publish', { room:roomName(event), data:data })
 		return true
 	}
 

@@ -17,17 +17,17 @@
 			shared: '5bd82df918d542f181f9308008f229c335812ba4',
 			secret: 'c7b7726df5a0e96304cd6e1d44e86036038191826b52bc11dff6e2a626ea1c46b0344dcc069a14dd',
 			realtime:true,
-			host:'backbeam.dev',
-			port:8080
+			host:'backbeamapps.dev',
+			port:8079
 		}, function(err) {
-			// backbeam.setEventHandler(function(data) {
-			// 	console.log('received', data)
-			// })
+			backbeam.subscribeToEvents('foo', function(event, data) {
+				console.log('yay!', event, data)
+			})
+			// backbeam.subscribeToEvents('bar')
 
-			// backbeam.subscribeToEvents('foo')
-
-			// backbeam.sendEvent('foo', {say:'hello world!'})
-			// console.log('message sent')
+			setTimeout(function() {
+				backbeam.sendEvent('foo', {say:'hello from javascript!'})
+			}, 100)
 		})
 		backbeam.select('event').query('join last 5 images').fetch(1, 0, function(error, objects) {
 			console.log('error', error)
@@ -45,9 +45,6 @@
 		// pais.save(function(err) {
 		// 	console.log('saved', pais.id())
 		// })
-
-		var hash = CryptoJS.HmacSHA1("\u00f1", "Secret Passphrase");
-		console.log('hash', hash.toString(CryptoJS.enc.Base64))
 
 		// var e = client.empty('event')
 		// e.set('name', 'A new event')
