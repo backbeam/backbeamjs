@@ -12,13 +12,16 @@
 	<script src="backbeam.js"></script>
 	<script charset="UTF-8">
 		backbeam.configure({
-			project:'callezeta',
-			env:'dev',
-			shared: '5bd82df918d542f181f9308008f229c335812ba4',
-			secret: 'c7b7726df5a0e96304cd6e1d44e86036038191826b52bc11dff6e2a626ea1c46b0344dcc069a14dd',
+			// project:'callezeta',
+			// env:'dev',
+			// shared: '5bd82df918d542f181f9308008f229c335812ba4',
+			// secret: 'c7b7726df5a0e96304cd6e1d44e86036038191826b52bc11dff6e2a626ea1c46b0344dcc069a14dd',
+			// host:'backbeamapps.dev',
+			// port:8079,
+			project: 'communities',
+			shared: '9cf44a3a8e63a31044c178e39298ae2bbe08fd4d',
+			secret: 'ae8639e757072a6d5d9b41de4354881627de9dbb38b3dc2bc80f03daec8511364b93b6205dfce8ca',
 			realtime:true,
-			host:'backbeamapps.dev',
-			port:8079
 		}, function(err) {
 			backbeam.subscribeToEvents('foo', function(event, data) {
 				console.log('yay!', event, data)
@@ -26,7 +29,7 @@
 			// backbeam.subscribeToEvents('bar')
 
 			setTimeout(function() {
-				backbeam.sendEvent('foo', {say:'hello from javascript!'})
+				backbeam.sendEvent('chat-yTiuMQ4a', {say:'hello from javascript!!'})
 			}, 100)
 		})
 		backbeam.select('event').query('join last 5 images').fetch(1, 0, function(error, objects) {

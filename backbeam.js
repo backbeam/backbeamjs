@@ -22,6 +22,73 @@
 	// 	}
 	// }
 
+	function guments(_arguments, callback) {
+		var args = Array.prototype.slice.call(_arguments)
+		var _callback = null
+		if (callback) {
+			if (args.length === 0) {
+				throw new Error('callback function required')
+			}
+			_callback = args.pop()
+			if (!_callback || typeof _callback != 'function') {
+				throw new Error('callback is not a function')
+			}
+		}
+
+		var self = {
+			next: function(name, optional) {
+				if (args.length === 0 && !optional)
+					throw new Error('Missing argument `'+name+'`')
+				return args.shift()
+			},
+			nextNumber: function(name, optional) {
+				var o = self.next(name, optional)
+				if (typeof o !== 'number') {
+					throw new Error('`'+name+'` is not a number')
+				}
+				return o
+			},
+			nextArray: function(name, optional) {
+				var o = self.next(name, optional)
+				if (!o || !_.isArray(o)) {
+					throw new Error('`'+name+'` is not an array')
+				}
+				return o
+			},
+			nextFunction: function(name, optional) {
+				var o = self.next(name, optional)
+				if (!_.isFunction(o)) {
+					throw new Error('`'+name+'` is not a function')
+				}
+				return o
+			},
+			nextObject: function(name, optional) {
+				var o = self.next(name, optional)
+				if (o && (!_.isObject(o) || _.isFunction(o) || _.isArray(o))) {
+					throw new Error('`'+name+'` is not an object')
+				}
+				return o
+			},
+			nextString: function(name, optional) {
+				var o = self.next(name, optional)
+				if (typeof o !== 'string') {
+					throw new Error('`'+name+'` is not a string')
+				}
+				return o
+			},
+			rest: function() {
+				if (args.length === 1 && _.isArray(args[0])) {
+					args = args[0]
+				}
+				return args
+			},
+			callback: function() {
+				return _callback
+			}
+		}
+		return self
+	}
+
 	var signature = function(data) {
 		var tokens = []
 		var keys = []
@@ -73,6 +140,7 @@
 		prms['signature'] = signature(prms)
 
 		var url = 'http://api.'+options.env+'.'+options.project+'.'+options.host+':'+options.port+path
+		console.log('url', url)
 		if (typeof $ !== 'undefined') {
 			if (method !== 'GET') prms._method = method
 			var req = $.ajax({
@@ -208,7 +276,10 @@
 			}
 		}
 
-		obj.save = function(callback) {
+		obj.save = function() {
+			var args      = guments(arguments, true)
+			var _callback = args.callback()
+
 			var method = null
 			var path   = null
 			if (identifier) {
@@ -237,9 +308,16 @@
 			})
 		}
 
-		obj.refresh = function(callback) {
+		obj.refresh = function() {
+			var args   = guments(arguments, true)
+			var joins  = args.next('joins', true)
+			var callback = args.callback()
+
 			// TODO: if not identifier
-			request('GET', '/data/'+entity+'/'+identifier, {}, function(error, data) {
+			var params = {}
+			if (joins) params.joins = joins
+
+			request('GET', '/data/'+entity+'/'+identifier, params, function(error, data) {
 				if (error) { return callback(error) }
 				var status = data.status
 				if (!status) { return callback(new BackbeamError('InvalidResponse')) }
@@ -250,7 +328,10 @@
 			})
 		}
 
-		obj.remove = function(callback) {
+		obj.remove = function() {
+			var args = guments(arguments, true)
+			var callback = args.callback()
+
 			// TODO: if not identifier
 			request('DELETE', '/data/'+entity+'/'+identifier, {}, function(error, data) {
 				if (error) { return callback(error) }
@@ -284,13 +365,17 @@
 						// TODO: check types
 						if (type === 'r') {
 							if (value.constructor == Object) {
-								var arr = []
-								var objs = value.result
-								for (var j = 0; j < objs.length; j++) {
-									var id = objs[j]
-									arr.push(references[id])
+								if (value.id && value.type) {
+									value = references[value.id] || empty(value.type, value.id)
+								} else if (value.result && value.count) {
+									var arr = []
+									var objs = value.result
+									for (var j = 0; j < objs.length; j++) {
+										var id = objs[j]
+										arr.push(references[id])
+									}
+									value.result = arr
 								}
-								value.result = arr
 							} else {
 								if (references) {
 									value = references[value]
@@ -298,6 +383,10 @@
 									value = null
 								}
 							}
+						} else if (type === 'd') {
+							value = new Date(parseInt(value, 10) || 0)
+						} else if (type === 'n') {
+							value = parseFloat(value) || 0
 						}
 
 						if (value) {
@@ -344,8 +433,79 @@
 				}
 				return this
 			},
-			fetch: function(limit, offset, callback) {
+			fetch: function() {
+				var args     = guments(arguments, true)
+				var limit    = args.nextNumber('limit')
+				var offset   = args.nextNumber('offset')
+				var callback = args.callback()
+
 				request('GET', '/data/'+entity, { q:q || '', params:params || [], limit:limit, offset:offset }, function(error, data) {
+					if (error) { return callback(error) }
+					var status = data.status
+					if (!status) { return callback(new BackbeamError('InvalidResponse')) }
+					if (status !== 'Success') { return callback(new BackbeamError(status)) }
+					var objects = objectsFromValues(data.objects, null)
+					var objs = []
+					for (var i = 0; i < data.ids.length; i++) {
+						objs.push(objects[data.ids[i]])
+					}
+					callback(null, objs)
+				})
+				return this
+			},
+			near: function() {
+				var args     = guments(arguments, true)
+				var field    = args.nextString('field')
+				var lat      = args.nextNumber('lat')
+				var lon      = args.nextNumber('lon')
+				var limit    = args.nextNumber('limit')
+				var callback = args.callback()
+
+				var _params = {
+					q      : q || '',
+					params : params || [],
+					limit  : limit,
+					near   : field,
+					lat    : lat,
+					lon    : lon,
+				}
+
+				request('GET', '/data/'+entity+'/near', _params, function(error, data) {
+					if (error) { return callback(error) }
+					var status = data.status
+					if (!status) { return callback(new BackbeamError('InvalidResponse')) }
+					if (status !== 'Success') { return callback(new BackbeamError(status)) }
+					var objects = objectsFromValues(data.objects, null)
+					var objs = []
+					for (var i = 0; i < data.ids.length; i++) {
+						objs.push(objects[data.ids[i]])
+					}
+					callback(null, objs, data.distances)
+				})
+				return this
+			},
+			bounding: function() {
+				var args     = guments(arguments, true)
+				var field    = args.nextString('field')
+				var swlat    = args.nextNumber('swlat')
+				var nelat    = args.nextNumber('nelat')
+				var swlon    = args.nextNumber('swlon')
+				var nelon    = args.nextNumber('nelon')
+				var limit    = args.nextNumber('limit')
+				var callback = args.callback()
+
+				var _params = {
+					q      : q || '',
+					params : params || [],
+					limit  : limit,
+					near   : field,
+					swlat  : swlat,
+					nelat  : nelat,
+					swlon  : swlon,
+					nelon  : nelon
+				}
+
+				request('GET', '/data/'+entity+'/bounding', _params, function(error, data) {
 					if (error) { return callback(error) }
 					var status = data.status
 					if (!status) { return callback(new BackbeamError('InvalidResponse')) }
@@ -462,8 +622,28 @@
 		currentUser = null
 	}
 
-	backbeam.login = function(email, password, callback) {
-		request('POST', '/user/email/login', {email:email, password:password}, function(error, data) {
+	backbeam.read = function() {
+		var args     = guments(arguments, true)
+		var entity   = args.next('entity')
+		var _id      = args.next('id')
+		var joins    = args.next('joins', true)
+		var callback = args.callback()
+
+		var obj = empty(entity, _id)
+		obj.refresh(joins, callback)
+	}
+
+	backbeam.login = function() {
+		var args      = guments(arguments, true)
+		var email     = args.next('email')
+		var password  = args.next('password')
+		var joins     = args.next('joins', true)
+		var callback  = args.callback()
+
+		var params = { email:email, password:password }
+		if (joins) params.joins = joins
+
+		request('POST', '/user/email/login', params, function(error, data) {
 			if (error) { return callback(error) }
 			var status = data.status
 			if (!status) { return callback(new BackbeamError('InvalidResponse')) }
@@ -477,7 +657,11 @@
 		})
 	}
 
-	backbeam.requestPasswordReset = function(email, callback) {
+	backbeam.requestPasswordReset = function() {
+		var args     = guments(arguments, true)
+		var email    = args.next('email')
+		var callback = args.callback()
+
 		request('POST', '/user/email/lostpassword', {email:email}, function(error, data) {
 			if (error) { return callback(error) }
 			var status = data.status
