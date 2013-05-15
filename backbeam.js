@@ -137,10 +137,13 @@
 		prms['nonce'] = nonce()
 		prms['time'] = Date.now().toString()
 		prms['key'] = options.shared
+		prms['method'] = method
+		prms['path'] = path
 		prms['signature'] = signature(prms)
+		delete prms['method']
+		delete prms['path']
 
 		var url = 'http://api.'+options.env+'.'+options.project+'.'+options.host+':'+options.port+path
-		console.log('url', url)
 		if (typeof $ !== 'undefined') {
 			if (method !== 'GET') prms._method = method
 			var req = $.ajax({
@@ -277,8 +280,8 @@
 		}
 
 		obj.save = function() {
-			var args      = guments(arguments, true)
-			var _callback = args.callback()
+			var args     = guments(arguments, true)
+			var callback = args.callback()
 
 			var method = null
 			var path   = null
@@ -465,12 +468,11 @@
 					q      : q || '',
 					params : params || [],
 					limit  : limit,
-					near   : field,
 					lat    : lat,
 					lon    : lon,
 				}
 
-				request('GET', '/data/'+entity+'/near', _params, function(error, data) {
+				request('GET', '/data/'+entity+'/near/'+field, _params, function(error, data) {
 					if (error) { return callback(error) }
 					var status = data.status
 					if (!status) { return callback(new BackbeamError('InvalidResponse')) }
@@ -488,8 +490,8 @@
 				var args     = guments(arguments, true)
 				var field    = args.nextString('field')
 				var swlat    = args.nextNumber('swlat')
-				var nelat    = args.nextNumber('nelat')
 				var swlon    = args.nextNumber('swlon')
+				var nelat    = args.nextNumber('nelat')
 				var nelon    = args.nextNumber('nelon')
 				var limit    = args.nextNumber('limit')
 				var callback = args.callback()
@@ -498,14 +500,13 @@
 					q      : q || '',
 					params : params || [],
 					limit  : limit,
-					near   : field,
 					swlat  : swlat,
 					nelat  : nelat,
 					swlon  : swlon,
 					nelon  : nelon
 				}
 
-				request('GET', '/data/'+entity+'/bounding', _params, function(error, data) {
+				request('GET', '/data/'+entity+'/bounding/'+field, _params, function(error, data) {
 					if (error) { return callback(error) }
 					var status = data.status
 					if (!status) { return callback(new BackbeamError('InvalidResponse')) }
