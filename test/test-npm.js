@@ -22,12 +22,11 @@ backbeam.configure({
 // ne 41.645883 -0.889163
 // sw 41.634113 -0.902896
 
-// backbeam.select('place').bounding('location', 41.634113, -0.902896, 41.645883, -0.889163, 10, function(err, objects) {
+// backbeam.select('place').query('join asdfasfasdf').bounding('location', 41.634113, -0.902896, 41.645883, -0.889163, 10, function(err, objects) {
 // 	console.log('err', err)
-// 	console.log('objects', objects)
-// 	for (var i = 0; i < objects.length; i++) {
-// 		console.log('object', objects[i].get('name'), objects[i].get('location'))
-// 	}
+// 	// for (var i = 0; i < objects.length; i++) {
+// 	// 	console.log('object', objects[i].get('name'), objects[i].get('location'))
+// 	// }
 // })
 
 // backbeam.select('event').query('where name like ?', 'slap').fetch(10, 0, function(err, objects) {

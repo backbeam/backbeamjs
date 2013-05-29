@@ -4,6 +4,7 @@
 	var options       = {}
 	var socket        = null
 	var roomDelegates = {}
+	var realtimeDelegates = []
 
 	function BackbeamError(status, message) {
 		this.name = status
@@ -11,16 +12,17 @@
 	}
 	BackbeamError.prototype = Error.prototype
 
-	// function fireCallback() {
-	// 	var args = Array.prototype.slice.call(arguments)
-	// 	var callback = args[0]
-	// 	var params = args.slice(1, args.length)
-	// 	if (callback === console.log) {
-	// 		callback.apply(console, params)
-	// 	} else {
-	// 		callback && callback.apply(null, params)
-	// 	}
-	// }
+	var _ = {
+		isArray: function(arr) {
+			return arr.constructor.name === 'Array'
+		},
+		isFunction: function(f) {
+			return typeof f === 'function'
+		},
+		isObject: function(o) {
+			return o.constructor.name === 'Object'
+		}
+	}
 
 	function guments(_arguments, callback) {
 		var args = Array.prototype.slice.call(_arguments)
@@ -89,6 +91,14 @@
 		return self
 	}
 
+	var sign = function(prms) {
+		prms['nonce']     = nonce()
+		prms['time']      = Date.now().toString()
+		prms['key']       = options.shared
+		prms['signature'] = signature(prms)
+		return prms
+	}
+
 	var signature = function(data) {
 		var tokens = []
 		var keys = []
@@ -134,12 +144,9 @@
 	var request = function(method, path, params, callback) {
 		var prms = {}
 		for (var key in params) { prms[key] = params[key] }
-		prms['nonce'] = nonce()
-		prms['time'] = Date.now().toString()
-		prms['key'] = options.shared
 		prms['method'] = method
 		prms['path'] = path
-		prms['signature'] = signature(prms)
+		sign(prms)
 		delete prms['method']
 		delete prms['path']
 
@@ -208,6 +215,7 @@
 		var createdAt  = null
 		var updatedAt  = null
 		var identifier = _id || null
+		var extra      = {}
 
 		var obj = {
 			entity: function() {
@@ -296,7 +304,7 @@
 				if (error) { return callback(error) }
 				var status = data.status
 				if (!status) { return callback(new BackbeamError('InvalidResponse')) }
-				if (status !== 'Success' && status !== 'PendingValidation') { return callback(new BackbeamError(status)) }
+				if (status !== 'Success' && status !== 'PendingValidation') { return callback(new BackbeamError(status, data.errorMessage)) }
 				var refs = {}; refs[data.id] = obj
 				identifier = data.id
 				var objects = objectsFromValues(data.objects, refs)
@@ -324,7 +332,7 @@
 				if (error) { return callback(error) }
 				var status = data.status
 				if (!status) { return callback(new BackbeamError('InvalidResponse')) }
-				if (status !== 'Success') { return callback(new BackbeamError(status)) }
+				if (status !== 'Success') { return callback(new BackbeamError(status, data.errorMessage)) }
 				var refs = {}; refs[data.id] = obj
 				var objects = objectsFromValues(data.objects, refs)
 				callback(null, obj)
@@ -340,7 +348,7 @@
 				if (error) { return callback(error) }
 				var status = data.status
 				if (!status) { return callback(new BackbeamError('InvalidResponse')) }
-				if (status !== 'Success') { return callback(new BackbeamError(status)) }
+				if (status !== 'Success') { return callback(new BackbeamError(status, data.errorMessage)) }
 				var refs = {}; refs[data.id] = obj
 				var objects = objectsFromValues(data.objects, refs)
 				callback(null, obj)
@@ -355,6 +363,7 @@
 
 		obj._fill = function(vals, references) {
 			commands = {}
+			extra = {}
 			for (var field in vals) {
 				var value = vals[field]
 				if (field === 'created_at') {
@@ -396,9 +405,24 @@
 							field = field.substring(0, i)
 							values[field] = value
 						}
+					} else if (field.indexOf('login_') === 0) {
+						extra[field.substring('login_'.length)] = value
 					}
 				}
 			}
+		}
+
+		obj.getLoginData = function(provider, key) {
+			key = provider+'_'+key
+			return extra[key]
+		}
+
+		obj.getTwitterData = function(key) {
+			return obj.getLoginData('tw', key)
+		}
+
+		obj.getFacebookData = function(key) {
+			return obj.getLoginData('facebook', key)
 		}
 
 		return obj
@@ -446,7 +470,7 @@
 					if (error) { return callback(error) }
 					var status = data.status
 					if (!status) { return callback(new BackbeamError('InvalidResponse')) }
-					if (status !== 'Success') { return callback(new BackbeamError(status)) }
+					if (status !== 'Success') { return callback(new BackbeamError(status, data.errorMessage)) }
 					var objects = objectsFromValues(data.objects, null)
 					var objs = []
 					for (var i = 0; i < data.ids.length; i++) {
@@ -476,7 +500,7 @@
 					if (error) { return callback(error) }
 					var status = data.status
 					if (!status) { return callback(new BackbeamError('InvalidResponse')) }
-					if (status !== 'Success') { return callback(new BackbeamError(status)) }
+					if (status !== 'Success') { return callback(new BackbeamError(status, data.errorMessage)) }
 					var objects = objectsFromValues(data.objects, null)
 					var objs = []
 					for (var i = 0; i < data.ids.length; i++) {
@@ -510,7 +534,7 @@
 					if (error) { return callback(error) }
 					var status = data.status
 					if (!status) { return callback(new BackbeamError('InvalidResponse')) }
-					if (status !== 'Success') { return callback(new BackbeamError(status)) }
+					if (status !== 'Success') { return callback(new BackbeamError(status, data.errorMessage)) }
 					var objects = objectsFromValues(data.objects, null)
 					var objs = []
 					for (var i = 0; i < data.ids.length; i++) {
@@ -533,53 +557,110 @@
 		var backbeam = module.exports = {}
 	}
 
-	backbeam.configure  = function(_options, callback) {
+	function loadSocketio(callback) {
+		if (typeof io === 'undefined') {
+			// TODO: this only works in the browser
+			var base = 'http://api.'+options.env+'.'+options.project+'.'+options.host+':'+options.port
+			$.ajax({
+				url: base+'/socket.io/socket.io.js',
+				dataType: 'script',
+				success: function() {
+					callback && callback()
+				},
+				failure: function() {
+					callback(new Error('Failed to load socket.io script'))
+				}
+			})
+		} else {
+			callback()
+		}
+	}
+
+	function fireConnectionEvent(name, arg) {
+		for (var i = 0; i < realtimeDelegates.length; i++) {
+			var f = realtimeDelegates[i][name]
+			f && f(arg)
+		}
+	}
+
+	function connect() {
+		loadSocketio(function(err) {
+			if (err) {
+				fireConnectionEvent('connectFailed', err)
+			}
+			var base = 'http://api.'+options.env+'.'+options.project+'.'+options.host+':'+options.port
+			socket = io.connect(base)
+			socket.on('msg', function(message) {
+				if (message.room) {
+					var arr = roomDelegates[message.room]
+					var prefix = roomName('')
+					if (message.room.indexOf(prefix) === 0) {
+						var event = message.room.substring(prefix.length)
+						if (arr) {
+							var _message = {}
+							for (var key in message) {
+								if (key.indexOf('_') === 0) {
+									_message[key.substring(1)] = message[key]
+								}
+							}
+							for (var i = 0; i < arr.length; i++) {
+								arr[i] && arr[i](event, _message)
+							}
+						}
+					}
+				}
+			})
+			// See exposed events: https://github.com/LearnBoost/socket.io/wiki/Exposed-events
+			socket.on('disconnect', function() {
+				fireConnectionEvent('disconnect')
+			})
+			socket.on('connecting', function() {
+				fireConnectionEvent('connecting')
+			})
+			socket.on('connect_failed', function() {
+				fireConnectionEvent('connectFailed')
+			})
+			socket.on('error', function() {
+				fireConnectionEvent('connectFailed')
+			})
+			socket.on('connect', function() {
+				for (var room in roomDelegates) {
+					socket.emit('subscribe', sign({ room:room }))
+				}
+				fireConnectionEvent('connect')
+			})
+		})
+	}
+
+	backbeam.enableRealTime = function() {
+		connect()
+	}
+
+	backbeam.configure  = function(_options) {
 		options.host    = _options.host || options.host || 'backbeamapps.com'
 		options.port    = _options.port || options.port || '80'
 		options.env     = _options.env  || options.env  || 'dev'
 		options.project = _options.project
 		options.shared  = _options.shared
 		options.secret  = _options.secret
-
-		if (_options.realtime === true) {
-			// TODO: this only works in the browser
-			var url = 'http://api.'+options.env+'.'+options.project+'.'+options.host+':'+options.port+'/socket.io/socket.io.js'
-			$.ajax({
-				url: url,
-				dataType: 'script',
-				success: function() {
-					socket = io.connect('http://'+options.host+':'+options.port)
-					socket.on('msg', function(message) {
-						if (message.room && message.data) {
-							var arr = roomDelegates[message.room]
-							var prefix = roomName('')
-							if (message.room.indexOf(prefix) === 0) {
-								var event = message.room.substring(prefix.length)
-								if (arr) {
-									for (var i = 0; i < arr.length; i++) {
-										arr[i] && arr[i](event, message.data)
-									}
-								}
-							}
-						}
-					})
-					callback && callback()
-				},
-				failure: function() {
-					console.log('err')
-					// TODO
-				}
-			})
-		} else {
-			callback && callback()
-		}
 	}
 
 	function roomName(event) {
 		return options.project+'/'+options.env+'/'+event
 	}
 
-	backbeam.subscribeToEvents = function(event, delegate) {
+	backbeam.subscribeToRealTimeConnectionEvents = function(callback) {
+		realtimeDelegates.push(callback)
+	}
+
+	backbeam.unsubscribeFromRealTimeConnectionEvents = function(callback) {
+		var index = realtimeDelegates.indexOf(callback)
+		if (index >= 0) {
+			realtimeDelegates.splice(index, 1)
+		}
+	}
+
+	backbeam.subscribeToRealTimeEvents = function(event, delegate) {
 		if (!socket) return false;
 		var room = roomName(event)
 		var arr = roomDelegates[room]
@@ -587,24 +668,29 @@
 			arr = roomDelegates[room] = []
 			arr.push(delegate)
 		}
-		socket.emit('subscribe', { room:room })
+		socket.emit('subscribe', sign({ room:room }))
 		return true
 	}
 
-	backbeam.unsubscribeFromEvents = function(event, delegate) {
+	backbeam.unsubscribeFromRealTimeEvents = function(event, delegate) {
 		var room = roomName(event)
 		var arr = roomDelegates[room]
 		if (!arr) return
 		var index = arr.indexOf(delegate)
 		arr.splice(index, 1)
 		if (!socket) return false;
-		socket.emit('unsubscribe', { room:room })
+		socket.emit('unsubscribe', sign({ room:room }))
 		return true
 	}
 
-	backbeam.sendEvent = function(event, data) {
-		if (!socket) return false;
-		socket.emit('publish', { room:roomName(event), data:data })
+	backbeam.sendRealTimeEvent = function(event, _data) {
+		if (!socket) return false
+		var data = {}
+		for (var key in _data) {
+			data['_'+key] = _data[key]
+		}
+		data.room = roomName(event)
+		socket.emit('publish', sign(data))
 		return true
 	}
 
@@ -648,7 +734,7 @@
 			if (error) { return callback(error) }
 			var status = data.status
 			if (!status) { return callback(new BackbeamError('InvalidResponse')) }
-			if (status !== 'Success') { return callback(new BackbeamError(status)) }
+			if (status !== 'Success') { return callback(new BackbeamError(status, data.errorMessage)) }
 			var objects = objectsFromValues(data.objects, null)
 			var user = objects[data.id]
 			if (user) {
@@ -667,9 +753,54 @@
 			if (error) { return callback(error) }
 			var status = data.status
 			if (!status) { return callback(new BackbeamError('InvalidResponse')) }
-			if (status !== 'Success') { return callback(new BackbeamError(status)) }
+			if (status !== 'Success') { return callback(new BackbeamError(status, data.errorMessage)) }
 			callback(null)
 		})
+	}
+
+	backbeam.socialSignup = function() {
+		var args        = guments(arguments, true)
+		var provider    = args.nextString('provider')
+		var body        = args.nextObject('credentials')
+		var joins       = args.next('joins', true)
+		var params      = args.rest()
+		var callback    = args.callback()
+
+		if (joins)  body.joins = joins
+		if (params) body.params = params
+
+		request('POST', '/user/'+provider+'/signup', body, function(error, data) {
+			if (error) { return callback(error) }
+			var status = data.status
+			var isNew = true
+			if (!status) { return callback(new BackbeamError('InvalidResponse')) }
+			if (status === 'UserAlreadyExists') { status = 'Success'; isNew = false }
+			if (status !== 'Success') { return callback(new BackbeamError(status, data.errorMessage)) }
+			var objects = objectsFromValues(data.objects, null)
+			var user = objects[data.id]
+			if (user) {
+				setCurrentUser(user) // TODO: data.auth
+			} else {
+				isNew = undefined
+			}
+			callback(null, user, isNew)
+		})
+	}
+
+	backbeam.twitterSignup = function() {
+		var args = ['twitter']
+		for (var i = 0; i < arguments.length; i++) {
+			args.push(arguments[i])
+		}
+		backbeam.socialSignup.apply(backbeam, args)
+	}
+
+	backbeam.facebookSignup = function() {
+		var args = ['facebook']
+		for (var i = 0; i < arguments.length; i++) {
+			args.push(arguments[i])
+		}
+		backbeam.socialSignup.apply(backbeam, args)
 	}
 
 })()
