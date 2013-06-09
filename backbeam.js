@@ -110,6 +110,7 @@
 			var key = keys[j]
 			var value = data[key]
 			if (value.constructor == Array) {
+				value = value.slice()
 				value.sort()
 				for (var i = 0; i < value.length; i++) {
 					tokens.push(key+'='+value[i])
