@@ -151,7 +151,7 @@
 		delete prms['method']
 		delete prms['path']
 
-		var url = 'http://api.'+options.env+'.'+options.project+'.'+options.host+':'+options.port+path
+		var url = options.protocol+'://api-'+options.env+'-'+options.project+'.'+options.host+':'+options.port+path
 		if (typeof $ !== 'undefined') {
 			if (method !== 'GET') prms._method = method
 			var req = $.ajax({
@@ -359,7 +359,7 @@
 		obj.fileURL = function(params) {
 			// TODO: if entity !== 'file'
 			var params = params ? '?'+$.param(params) : ''
-			return 'http://'+options.project+'.'+options.host+':'+options.port+'/file/'+options.env+'/'+identifier+params
+			return options.protocol+'://'+options.project+'.'+options.host+':'+options.port+'/file/'+options.env+'/'+identifier+params
 		}
 
 		obj._fill = function(vals, references) {
@@ -561,7 +561,7 @@
 	function loadSocketio(callback) {
 		if (typeof io === 'undefined') {
 			// TODO: this only works in the browser
-			var base = 'http://api.'+options.env+'.'+options.project+'.'+options.host+':'+options.port
+			var base = options.protocol+'://api-'+options.env+'-'+options.project+'.'+options.host+':'+options.port
 			$.ajax({
 				url: base+'/socket.io/socket.io.js',
 				dataType: 'script',
@@ -587,9 +587,9 @@
 	function connect() {
 		loadSocketio(function(err) {
 			if (err) {
-				fireConnectionEvent('connectFailed', err)
+				return fireConnectionEvent('connectFailed', err)
 			}
-			var base = 'http://api.'+options.env+'.'+options.project+'.'+options.host+':'+options.port
+			var base = options.protocol+'://api-'+options.env+'-'+options.project+'.'+options.host+':'+options.port
 			socket = io.connect(base)
 			socket.on('msg', function(message) {
 				if (message.room) {
@@ -637,13 +637,19 @@
 		connect()
 	}
 
-	backbeam.configure  = function(_options) {
-		options.host    = _options.host || options.host || 'backbeamapps.com'
-		options.port    = _options.port || options.port || '80'
-		options.env     = _options.env  || options.env  || 'dev'
-		options.project = _options.project
-		options.shared  = _options.shared
-		options.secret  = _options.secret
+	backbeam.configure   = function(_options) {
+		options.host     = _options.host     || options.host     || 'backbeamapps.com'
+		options.env      = _options.env      || options.env      || 'dev'
+		options.protocol = _options.protocol || options.protocol || 'http'
+		options.port     = _options.port     || options.port
+
+		options.project  = _options.project
+		options.shared   = _options.shared
+		options.secret   = _options.secret
+
+		if (!options.port) {
+			options.port = options.protocol === 'https' ? 443 : 80
+		}
 	}
 
 	function roomName(event) {
@@ -662,13 +668,13 @@
 	}
 
 	backbeam.subscribeToRealTimeEvents = function(event, delegate) {
-		if (!socket) return false;
 		var room = roomName(event)
 		var arr = roomDelegates[room]
 		if (!arr) {
 			arr = roomDelegates[room] = []
 			arr.push(delegate)
 		}
+		if (!socket) return false
 		socket.emit('subscribe', sign({ room:room }))
 		return true
 	}
