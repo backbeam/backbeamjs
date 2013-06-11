@@ -91,9 +91,11 @@
 		return self
 	}
 
-	var sign = function(prms) {
-		prms['nonce']     = nonce()
-		prms['time']      = Date.now().toString()
+	var sign = function(prms, ignoreNonce) {
+		if (!ignoreNonce) {
+			prms['nonce']     = nonce()
+			prms['time']      = Date.now().toString()
+		}
 		prms['key']       = options.shared
 		prms['signature'] = signature(prms)
 		return prms
@@ -358,8 +360,21 @@
 
 		obj.fileURL = function(params) {
 			// TODO: if entity !== 'file'
-			var params = params ? '?'+$.param(params) : ''
-			return options.protocol+'://'+options.project+'.'+options.host+':'+options.port+'/file/'+options.env+'/'+identifier+params
+			params = params || {}
+			var qs = null
+			var path = '/data/file/download/'+identifier+'/'+obj.get('version')
+			params['path'  ] = path
+			params['method'] = 'GET'
+			sign(params, true)
+			delete params['path']
+			delete params['method']
+			if (typeof require !== 'undefined') {
+				qs = require('querystring').stringify(params)
+			} else {
+				qs = $.param(params)
+			}
+			var base = options.protocol+'://api-'+options.env+'-'+options.project+'.'+options.host+':'+options.port+path
+			return base+'?'+qs
 		}
 
 		obj._fill = function(vals, references) {
