@@ -6,6 +6,145 @@
 	var roomDelegates = {}
 	var realtimeDelegates = []
 
+	if (typeof window !== 'undefined') {
+		var backbeam = window.backbeam = window.backbeam || {}
+	}
+	if (typeof module !== 'undefined') {
+		var backbeam = module.exports = {}
+	}
+
+	function serialize(params) {
+		if (typeof require !== 'undefined') {
+			return require('querystring').stringify(params)
+		}
+		var str = []
+		for (var key in params) {
+			if (params.hasOwnProperty(key)) {
+				var value = params[key]
+				var _key = encodeURIComponent(key)
+				if (value && value.constructor == Array) {
+					for (var i = 0; i < value.length; i++) {
+						str.push(_key+'='+encodeURIComponent(value[i]))
+					}
+				} else {
+					str.push(_key+'='+encodeURIComponent(value))
+				}
+			}
+		}
+		return str.join('&')
+	}
+
+	function createBrowserRequester() {
+		if (typeof XMLHttpRequest === 'undefined') return null
+
+		return function(method, url, params, headers, callback) {
+			var xhr = new XMLHttpRequest()
+			var query = params ? serialize(params) : ''
+			if (method === 'GET') {
+				url += '?'+query
+			}
+			xhr.open(method, url, true)
+			xhr.onload = function() {
+				try {
+					var data = JSON.parse(xhr.responseText)
+				} catch(e) {
+					return callback(e)
+				}
+				callback(null, data)
+			}
+
+			xhr.onerror = function(e) {
+				callback(e)
+			}
+
+			if (headers) {
+				for (var name in headers) {
+					if (headers.hasOwnProperty(name)) {
+						xhr.setRequestHeader(name, headers[name])
+					}
+				}
+			}
+
+			if (method === 'GET') {
+				xhr.send(null)
+			} else {
+				xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded')
+				xhr.send(query)
+			}
+		}
+	}
+
+	function createNodeRequester() {
+		if (typeof require === 'undefined') return null
+
+		return function(method, url, params, headers, callback) {
+			var opts = { url:url, method:method, headers:headers }
+			if (method === 'GET') {
+				opts.qs = params
+			} else {
+				opts.form = params
+			}
+			require('request')(opts, function(err, response, body) {
+				if (err) { return callback(err) }
+				try {
+					var data = JSON.parse(body)
+				} catch(e) {
+					return callback(e)
+				}
+				callback(null, data)
+			})
+		}
+	}
+
+	function createFakeRequester() {
+		return function() {
+			throw new Error('Cannot load URL. Neither XMLHttpRequest nor require("request") were found')
+		}
+	}
+
+	function createBrowserCrypter() {
+		if (typeof CryptoJS === 'undefined') return null
+
+		return {
+			hmacSha1: function(message, secret) {
+				return CryptoJS.HmacSHA1(message, secret).toString(CryptoJS.enc.Base64)
+			},
+			nonce: function() {
+				var random = Date.now()+':'+Math.random()
+				return CryptoJS.SHA1(random).toString(CryptoJS.enc.Hex)
+			}
+		}
+	}
+
+	function createNodeCrypter() {
+		if (typeof require === 'undefined') return null
+
+		var crypto = require('crypto')
+		return {
+			hmacSha1: function(message, secret) {
+				return crypto.createHmac('sha1', new Buffer(secret, 'utf8')).update(new Buffer(message, 'utf8')).digest('base64')
+			},
+			nonce: function() {
+				var random = Date.now()+':'+Math.random()
+				return crypto.createHash('sha1').update(random).digest('hex')
+			}
+		}
+	}
+
+	function createFakeCrypter() {
+		return {
+			hmacSha1: function() {
+				throw new Error('Cannot calculate HMAC/SHA1. Neither CryptoJS nor require("crypto") were found')
+			},
+			nonce: function() {
+				throw new Error('Cannot calculate secure nonce. Neither CryptoJS nor require("crypto") were found')
+			}
+		}
+	}
+
+	backbeam.requester = createBrowserRequester() || createNodeRequester() || createFakeRequester()
+	backbeam.crypter   = createBrowserCrypter()   || createNodeCrypter()   || createFakeCrypter()
+
 	function BackbeamError(status, message) {
 		this.name = status
 		this.message = message || ''
@@ -93,7 +232,7 @@
 
 	var sign = function(prms, ignoreNonce) {
 		if (!ignoreNonce) {
-			prms['nonce']     = nonce()
+			prms['nonce']     = backbeam.crypter.nonce()
 			prms['time']      = Date.now().toString()
 		}
 		prms['key']       = options.shared
@@ -122,26 +261,7 @@
 			}
 		}
 		var signatureBaseString = tokens.join('&')
-		if (typeof CryptoJS !== 'undefined') {
-			return CryptoJS.HmacSHA1(signatureBaseString, options.secret).toString(CryptoJS.enc.Base64)
-		} else if (typeof require !== 'undefined') {
-			var crypto = require('crypto')
-			return crypto.createHmac('sha1', new Buffer(options.secret, 'utf8')).update(new Buffer(signatureBaseString, 'utf8')).digest('base64')
-		} else {
-			throw new Error('CryptoJS library not found and no crypto module found')
-		}
-	}
-
-	function nonce() {
-		var random = Date.now()+':'+Math.random()
-		if (typeof CryptoJS !== 'undefined') {
-			return CryptoJS.SHA1(random).toString(CryptoJS.enc.Hex)
-		} else if (typeof require !== 'undefined') {
-			var crypto = require('crypto')
-			return crypto.createHash('sha1').update(random).digest('hex')
-		} else {
-			throw new Error('CryptoJS library not found and no crypto module found')
-		}
+		return backbeam.crypter.hmacSha1(signatureBaseString, options.secret)
 	}
 
 	var request = function(method, path, params, callback) {
@@ -154,40 +274,7 @@
 		delete prms['path']
 
 		var url = options.protocol+'://api-'+options.env+'-'+options.project+'.'+options.host+':'+options.port+path
-		if (typeof $ !== 'undefined') {
-			if (method !== 'GET') prms._method = method
-			var req = $.ajax({
-				type: 'GET',
-				url: url,
-				data: prms,
-				dataType: 'jsonp',
-				success: function(data, status, xhr) {
-					callback(null, data)
-				},
-				// TODO: timeout
-			})
-			req.error(function(xhr, errorType, err) {
-				callback(err)
-			})
-		} else if (typeof require !== 'undefined') {
-			var opts = { url:url, method:method }
-			if (method === 'GET') {
-				opts.qs = prms
-			} else {
-				opts.form = prms
-			}
-			require('request')(opts, function(err, response, body) {
-				if (err) { return callback(err) }
-				try {
-					var data = JSON.parse(body)
-				} catch(e) {
-					return callback(e)
-				}
-				callback(null, data)
-			})
-		} else {
-			throw new Error('jQuery library not found and no "request" module found')
-		}
+		backbeam.requester(method, url, prms, {}, callback)
 	}
 
 	function stringFromObject(obj, addEntity) {
@@ -361,20 +448,20 @@
 		obj.fileURL = function(params) {
 			// TODO: if entity !== 'file'
 			params = params || {}
-			var qs = null
-			var path = '/data/file/download/'+identifier+'/'+obj.get('version')
+			var path = null
+			var version = obj.get('version')
+			if (version) {
+				path = '/data/file/download/'+identifier+'/'+obj.get('version')
+			} else {
+				path = '/data/file/download/'+identifier
+			}
 			params['path'  ] = path
 			params['method'] = 'GET'
 			sign(params, true)
 			delete params['path']
 			delete params['method']
-			if (typeof require !== 'undefined') {
-				qs = require('querystring').stringify(params)
-			} else {
-				qs = $.param(params)
-			}
 			var base = options.protocol+'://api-'+options.env+'-'+options.project+'.'+options.host+':'+options.port+path
-			return base+'?'+qs
+			return base+'?'+serialize(params)
 		}
 
 		obj._fill = function(vals, references) {
@@ -492,7 +579,7 @@
 					for (var i = 0; i < data.ids.length; i++) {
 						objs.push(objects[data.ids[i]])
 					}
-					callback(null, objs)
+					callback(null, objs, data.count)
 				})
 				return this
 			},
@@ -566,13 +653,6 @@
 		}
 	}
 
-	if (typeof window !== 'undefined') {
-		var backbeam = window.backbeam = window.backbeam || {}
-	}
-	if (typeof module !== 'undefined') {
-		var backbeam = module.exports = {}
-	}
-
 	function loadSocketio(callback) {
 		if (typeof io === 'undefined') {
 			// TODO: this only works in the browser
@@ -641,7 +721,7 @@
 			})
 			socket.on('connect', function() {
 				for (var room in roomDelegates) {
-					socket.emit('subscribe', sign({ room:room }))
+					socket.emit('subscribe', { room:room })
 				}
 				fireConnectionEvent('connect')
 			})
@@ -661,6 +741,8 @@
 		options.project  = _options.project
 		options.shared   = _options.shared
 		options.secret   = _options.secret
+
+		options.webVersion = _options.webVersion
 
 		if (!options.port) {
 			options.port = options.protocol === 'https' ? 443 : 80
@@ -690,7 +772,7 @@
 			arr.push(delegate)
 		}
 		if (!socket) return false
-		socket.emit('subscribe', sign({ room:room }))
+		socket.emit('subscribe', { room:room })
 		return true
 	}
 
@@ -701,7 +783,7 @@
 		var index = arr.indexOf(delegate)
 		arr.splice(index, 1)
 		if (!socket) return false;
-		socket.emit('unsubscribe', sign({ room:room }))
+		socket.emit('unsubscribe', { room:room })
 		return true
 	}
 
@@ -712,8 +794,58 @@
 			data['_'+key] = _data[key]
 		}
 		data.room = roomName(event)
-		socket.emit('publish', sign(data))
+		socket.emit('publish', data)
 		return true
+	}
+
+	backbeam.subscribeDeviceToChannels = function() {
+		var args     = guments(arguments, true)
+		var gateway  = args.nextString('gateway')
+		var device   = args.nextString('device')
+		var channels = args.rest()
+		var callback = args.callback()
+
+		var params = { token:device, gateway:gateway, channels:channels }
+		request('POST', '/push/subscribe', params, function(error, data) {
+			if (error) { return callback(error) }
+			var status = data.status
+			if (!status) { return callback(new BackbeamError('InvalidResponse')) }
+			if (status !== 'Success') { return callback(new BackbeamError(status, data.errorMessage)) }
+			callback(null)
+		})
+	}
+
+	backbeam.unsubscribeDeviceFromChannels = function() {
+		var args     = guments(arguments, true)
+		var gateway  = args.nextString('gateway')
+		var device   = args.nextString('device')
+		var channels = args.rest()
+		var callback = args.callback()
+
+		var params = { token:device, gateway:gateway, channels:channels }
+		request('POST', '/push/unsubscribe', params, function(error, data) {
+			if (error) { return callback(error) }
+			var status = data.status
+			if (!status) { return callback(new BackbeamError('InvalidResponse')) }
+			if (status !== 'Success') { return callback(new BackbeamError(status, data.errorMessage)) }
+			callback(null)
+		})
+	}
+
+	backbeam.sendPushNotification = function() {
+		var args     = guments(arguments, true)
+		var channel  = args.nextString('channel')
+		var options  = args.nextObject('options')
+		var callback = args.callback()
+
+		options.channel = channel // TOOD: better clone the options object and not modify it
+		request('POST', '/push/send', options, function(error, data) {
+			if (error) { return callback(error) }
+			var status = data.status
+			if (!status) { return callback(new BackbeamError('InvalidResponse')) }
+			if (status !== 'Success') { return callback(new BackbeamError(status, data.errorMessage)) }
+			callback(null)
+		})
 	}
 
 	backbeam.select = select
@@ -823,6 +955,58 @@
 			args.push(arguments[i])
 		}
 		backbeam.socialSignup.apply(backbeam, args)
+	}
+
+	function requestController(method, path, params, callback) {
+		var prms = {}
+		if (params) {
+			for (var key in params) {
+				prms[key] = params[key]
+			}
+		}
+		var url = null
+		if (options.webVersion) {
+			url = options.protocol+'://web-'+options.webVersion+'-'+options.env+'-'+options.project+'.'+options.host+':'+options.port+path
+		} else {
+			url = options.protocol+'://web-'+options.env+'-'+options.project+'.'+options.host+':'+options.port+path
+		}
+		var headers = {}
+		backbeam.requester(method, path, params, headers, callback)
+	}
+
+	backbeam.requestJSON = function() {
+		var args        = guments(arguments, true)
+		var method      = args.nextString('method')
+		var path        = args.nextString('path')
+		var params      = args.nextObject('params', true)
+		var callback    = args.callback()
+
+		requestController(method, path, params, function(err, data) {
+			if (err) { return callback(err) }
+			callback(null, data)
+		})
+	}
+
+	backbeam.requestObjects = function() {
+		var args        = guments(arguments, true)
+		var method      = args.nextString('method')
+		var path        = args.nextString('path')
+		var params      = args.nextObject('params', true)
+		var callback    = args.callback()
+
+		requestController(method, path, params, function(err, data) {
+			if (err) { return callback(err) }
+
+			var status = data.status
+			if (!status) { return callback(new BackbeamError('InvalidResponse')) }
+			if (status !== 'Success') { return callback(new BackbeamError(status, data.errorMessage)) }
+			var objects = objectsFromValues(data.objects, null)
+			var objs = []
+			for (var i = 0; i < data.ids.length; i++) {
+				objs.push(objects[data.ids[i]])
+			}
+			callback(null, objs, data.count)
+		})
 	}
 
 })()
