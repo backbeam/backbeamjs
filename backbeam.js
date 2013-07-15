@@ -832,6 +832,38 @@
 		})
 	}
 
+	backbeam.subscribedChannels = function() {
+		var args     = guments(arguments, true)
+		var gateway  = args.nextString('gateway')
+		var device   = args.nextString('device')
+		var callback = args.callback()
+
+		var params = { token:device, gateway:gateway }
+		request('GET', '/push/subscribed-channels', params, function(error, data) {
+			if (error) { return callback(error) }
+			var status = data.status
+			if (!status) { return callback(new BackbeamError('InvalidResponse')) }
+			if (status !== 'Success') { return callback(new BackbeamError(status, data.errorMessage)) }
+			callback(null, data.channels)
+		})
+	}
+
+	backbeam.unsubscribeDeviceFromAllChannels = function() {
+		var args     = guments(arguments, true)
+		var gateway  = args.nextString('gateway')
+		var device   = args.nextString('device')
+		var callback = args.callback()
+
+		var params = { token:device, gateway:gateway }
+		request('POST', '/push/unsubscribe-all', params, function(error, data) {
+			if (error) { return callback(error) }
+			var status = data.status
+			if (!status) { return callback(new BackbeamError('InvalidResponse')) }
+			if (status !== 'Success') { return callback(new BackbeamError(status, data.errorMessage)) }
+			callback(null)
+		})
+	}
+
 	backbeam.sendPushNotification = function() {
 		var args     = guments(arguments, true)
 		var channel  = args.nextString('channel')
