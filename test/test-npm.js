@@ -29,10 +29,9 @@ backbeam.configure({
 // 	// }
 // })
 
-// backbeam.select('event').query('where name like ?', 'slap').fetch(10, 0, function(err, objects) {
-	// console.log('err', err)
-	// console.log('objects', objects)
-	// for (var i = 0; i < objects.length; i++) {
-	// 	console.log('object', objects[i].get('name'), objects[i].get('location'))
-	// }
-// })
+backbeam.select('event').query('where name like ?', 'slap').fetch(10, 0, function(err, objects) {
+	if (err) return console.log('err', err)
+	for (var i = 0; i < objects.length; i++) {
+		console.log('object', objects[i].get('name'), objects[i].get('location'))
+	}
+})

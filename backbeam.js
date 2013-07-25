@@ -13,6 +13,23 @@
 		var backbeam = module.exports = {}
 	}
 
+	// Code based on async.js https://github.com/caolan/async/blob/master/lib/async.js#L76
+	if (typeof process === 'undefined' || !(process.nextTick)) {
+		if (typeof setImmediate === 'function') {
+			backbeam.nextTick = function (fn) {
+				// not a direct alias for IE10 compatibility
+				setImmediate(fn)
+			}
+		} else {
+			backbeam.nextTick = function (fn) {
+				setTimeout(fn, 0)
+			}
+		}
+	} else {
+		backbeam.nextTick = process.nextTick
+	}
+	// ---
+
 	function serialize(params) {
 		if (typeof require !== 'undefined') {
 			return require('querystring').stringify(params)
@@ -265,6 +282,11 @@
 	}
 
 	var request = function(method, path, params, callback) {
+		if (!options.shared || !options.secret) {
+			return backbeam.nextTick(function() {
+				callback(new Error('Bad configuration. Shared or secret API keys not set'))
+			})
+		}
 		var prms = {}
 		for (var key in params) { prms[key] = params[key] }
 		prms['method'] = method
