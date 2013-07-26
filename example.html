@@ -9,7 +9,6 @@
 </head>
 <body>
 	<ul id="list"></ul>
-	<script src="jquery.min.js"></script>
 	<script src="hmac-sha1.js"></script>
 	<script src="enc-base64.js"></script>
 	<script src="backbeam.js"></script>
@@ -23,14 +22,12 @@
 		backbeam.configure({
 			project:'callezeta',
 			env:'dev',
-			shared: '5bd82df918d542f181f9308008f229c335812ba4',
-			secret: 'c7b7726df5a0e96304cd6e1d44e86036038191826b52bc11dff6e2a626ea1c46b0344dcc069a14dd',
+			shared: 'xxx',
+			secret: 'xxx',
 			host:'backbeamapps.dev',
 			port:8079,
-			// project:'communities',
-			// env:'dev',
-			// shared: 'abfed4e9635c047323917ef722e5f780aa3bc768',
-			// secret: '1e9fa7e5a14c5c4b6d7579b91bd85ce52f12f192d7a2c2646fed2f8f4d909846980215727b401757',
+			webVersion: 'v1',
+			httpAuth: 'xxxx'
 		})
 
 		backbeam.subscribeToRealTimeEvents('foo', function(event, data) {
@@ -53,6 +50,16 @@
 		})
 
 		backbeam.enableRealTime()
+
+		backbeam.requestObjects('GET', '/objects', {}, function(err, objects, total) {
+			for (var i=0; i<objects.length; i++) {
+				console.log('name =', objects[i].get('name'))
+			}
+		})
+
+		backbeam.requestJSON('GET', '/json', {}, function(err, data) {
+			console.log('data =', data.hello)
+		})
 
 	</script>
 </body>

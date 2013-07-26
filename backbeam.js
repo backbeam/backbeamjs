@@ -129,6 +129,10 @@
 			nonce: function() {
 				var random = Date.now()+':'+Math.random()
 				return CryptoJS.SHA1(random).toString(CryptoJS.enc.Hex)
+			},
+			base64: function(str) {
+				var words = CryptoJS.enc.Utf8.parse(str)
+				return CryptoJS.enc.Base64.stringify(words)
 			}
 		}
 	}
@@ -144,6 +148,9 @@
 			nonce: function() {
 				var random = Date.now()+':'+Math.random()
 				return crypto.createHash('sha1').update(random).digest('hex')
+			},
+			base64: function(str) {
+				return new Buffer(str).toString('base64')
 			}
 		}
 	}
@@ -675,20 +682,27 @@
 		}
 	}
 
+	function loadScript(src, callback) {
+		var script = document.createElement('script')
+		script.type = 'text/javascript'
+		script.src = src
+		script.onload = script.onreadystatechange = function() {
+			if (callback && (!this.readyState || this.readyState == 'complete')) {
+				callback(null); callback = null
+			}
+		}
+		document.getElementsByTagName('head')[0].appendChild(script)
+	}
+
 	function loadSocketio(callback) {
 		if (typeof io === 'undefined') {
 			// TODO: this only works in the browser
 			var base = options.protocol+'://api-'+options.env+'-'+options.project+'.'+options.host+':'+options.port
-			$.ajax({
-				url: base+'/socket.io/socket.io.js',
-				dataType: 'script',
-				success: function() {
-					callback && callback()
-				},
-				failure: function() {
-					callback(new Error('Failed to load socket.io script'))
-				}
-			})
+			try {
+				loadScript(base+'/socket.io/socket.io.js', callback)
+			} catch(e) {
+				callback(new Error('Failed to load socket.io script'))
+			}
 		} else {
 			callback()
 		}
@@ -765,6 +779,7 @@
 		options.secret   = _options.secret
 
 		options.webVersion = _options.webVersion
+		options.httpAuth   = _options.httpAuth
 
 		if (!options.port) {
 			options.port = options.protocol === 'https' ? 443 : 80
@@ -1025,7 +1040,10 @@
 			url = options.protocol+'://web-'+options.env+'-'+options.project+'.'+options.host+':'+options.port+path
 		}
 		var headers = {}
-		backbeam.requester(method, path, params, headers, callback)
+		if (options.httpAuth) {
+			headers['Authorization'] = 'Basic '+backbeam.crypter.base64(options.project+':'+options.httpAuth)
+		}
+		backbeam.requester(method, url, params, headers, callback)
 	}
 
 	backbeam.requestJSON = function() {

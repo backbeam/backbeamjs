@@ -1,12 +1,14 @@
 var backbeam = require('../backbeam')
 
 backbeam.configure({
-	host: 'backbeamapps.dev',
-	port: '8079',
+	// host: 'backbeamapps.dev',
+	// port: '8079',
 	project: 'callezeta',
-	shared: '5bd82df918d542f181f9308008f229c335812ba4',
-	secret: 'c7b7726df5a0e96304cd6e1d44e86036038191826b52bc11dff6e2a626ea1c46b0344dcc069a14dd',
-	env:'dev'
+	// shared: '5bd82df918d542f181f9308008f229c335812ba4',
+	// secret: 'c7b7726df5a0e96304cd6e1d44e86036038191826b52bc11dff6e2a626ea1c46b0344dcc069a14dd',
+	env:'dev',
+	webVersion: 'v1',
+	httpAuth: '567ebfe8c8084e8b3dcb346550a894086109c87c'
 })
 
 // 
@@ -29,9 +31,15 @@ backbeam.configure({
 // 	// }
 // })
 
-backbeam.select('event').query('where name like ?', 'slap').fetch(10, 0, function(err, objects) {
+// backbeam.select('event').query('where name like ?', 'slap').fetch(10, 0, function(err, objects) {
+// 	if (err) return console.log('err', err)
+// 	for (var i = 0; i < objects.length; i++) {
+// 		console.log('object', objects[i].get('name'), objects[i].get('location'))
+// 	}
+// })
+
+
+backbeam.requestJSON('GET', '/json', {}, function(err, data) {
 	if (err) return console.log('err', err)
-	for (var i = 0; i < objects.length; i++) {
-		console.log('object', objects[i].get('name'), objects[i].get('location'))
-	}
+	console.log('data =', data)
 })
