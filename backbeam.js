@@ -323,6 +323,9 @@
 		if (obj && obj.constructor && obj.constructor == Date) {
 			return ''+obj.getTime()
 		}
+		if (obj && typeof obj.toString === 'function') {
+			return obj.toString()
+		}
 		// TODO: location
 		return null
 	}
@@ -1079,6 +1082,70 @@
 			}
 			callback(null, objs, data.count)
 		})
+	}
+
+	backbeam.collection = function() {
+		var arr = []
+
+		function addWithPrefix(values, prefix) {
+			for (var i = 0; i < values.length; i++) {
+				var value = values[i]
+				if (value) {
+					if (_.isArray(value)) {
+						for (var i = 0; i < value.length; i++) {
+							arr.push(prefix+value[i])
+						}
+					} else {
+						arr.push(prefix+value)
+					}
+				}
+			}
+		}
+
+		var obj = {
+			add: function() {
+				for (var i = 0; i < arguments.length; i++) {
+					var value = arguments[i]
+					if (value) {
+						if (typeof value.id === 'function') {
+							arr.push(value.id())
+						} else if (_.isArray(value)) {
+							for (var i = 0; i < value.length; i++) {
+								arr.push(value[i])
+							}
+						} else {
+							arr.push(value)
+						}
+					}
+				}
+				return this
+			},
+			addTwitter: function() {
+				addWithPrefix(arguments, 'tw:')
+				return this
+			},
+			addFacebook: function() {
+				addWithPrefix(arguments, 'fb:')
+				return this
+			},
+			addEmail: function() {
+				addWithPrefix(arguments, 'email:')
+				return this
+			},
+			toString: function() {
+				return arr.join('\n')
+			}
+		}
+		if (arguments.length === 1) {
+			if (_.isArray(arguments[0])) {
+				obj.add(arguments[0])
+			} else {
+				obj.add(arguments[0])
+			}
+		} else {
+			obj.add(Array.prototype.slice.call(arguments))
+		}
+		return obj
 	}
 
 })()
