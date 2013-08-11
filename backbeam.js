@@ -31,7 +31,7 @@
 	// ---
 
 	function serialize(params) {
-		if (typeof require !== 'undefined') {
+		if (typeof require !== 'undefined' && typeof Titanium === 'undefined') {
 			return require('querystring').stringify(params)
 		}
 		var str = []
@@ -52,10 +52,15 @@
 	}
 
 	function createBrowserRequester() {
-		if (typeof XMLHttpRequest === 'undefined') return null
+		if (typeof XMLHttpRequest === 'undefined' && typeof Titanium === 'undefined') return null
 
 		return function(method, url, params, headers, callback) {
-			var xhr = new XMLHttpRequest()
+			var xhr
+			if (typeof Titanium !== 'undefined') {
+				xhr = Titanium.Network.createHTTPClient()
+			} else {
+				xhr = new XMLHttpRequest()
+			}
 			var query = params ? serialize(params) : ''
 			if (method === 'GET') {
 				url += '?'+query
