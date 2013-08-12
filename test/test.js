@@ -7,14 +7,18 @@ if (typeof chai === 'undefined') {
 chai.Assertion.includeStack = true
 
 before(function(done) {
+	var cacheType = 'default'
+	if (typeof require === 'undefined') cacheType = 'localStorage'
 	backbeam.configure({
 		project:'callezeta',
 		host:'backbeamapps.dev',
 		shared: '5bd82df918d542f181f9308008f229c335812ba4',
 		secret: 'c7b7726df5a0e96304cd6e1d44e86036038191826b52bc11dff6e2a626ea1c46b0344dcc069a14dd',
 		port:'8079',
-		env:'dev'
+		env:'dev',
+		cache: { type: cacheType}
 	})
+	backbeam.clearCache()
 	done()
 })
 
@@ -74,14 +78,24 @@ describe('Test backbeam', function() {
 		})
 	})
 
-	it('Query with BQL and params', function(done) {
-		backbeam.select('place').query('where type=?', ['Terraza']).fetch(100, 0, function(error, objects) {
+	it('Query with BQL and params. Test cache as well', function(done) {
+		backbeam.select('place').query('where type=?', ['Terraza']).policy('local or remote').fetch(100, 0, function(error, objects, total, fromCache) {
 			chai.assert.isNull(error)
+			chai.assert.equal(fromCache, false)
 			chai.assert.equal(objects.length, 1)
 			chai.assert.equal(objects[0].entity(), 'place')
 			chai.assert.equal(objects[0].get('name'), 'Final name')
 			chai.assert.equal(objects[0].get('description'), 'Some description')
-			done()
+
+			backbeam.select('place').query('where type=?', ['Terraza']).policy('local or remote').fetch(100, 0, function(error, objects, total, fromCache) {
+				chai.assert.isNull(error)
+				chai.assert.equal(fromCache, true)
+				chai.assert.equal(objects.length, 1)
+				chai.assert.equal(objects[0].entity(), 'place')
+				chai.assert.equal(objects[0].get('name'), 'Final name')
+				chai.assert.equal(objects[0].get('description'), 'Some description')
+				done()
+			})
 		})
 	})
 

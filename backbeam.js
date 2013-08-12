@@ -2,6 +2,7 @@
 
 	var currentUser   = null
 	var options       = {}
+	var cache         = null
 	var socket        = null
 	var roomDelegates = {}
 	var realtimeDelegates = []
@@ -131,6 +132,9 @@
 			hmacSha1: function(message, secret) {
 				return CryptoJS.HmacSHA1(message, secret).toString(CryptoJS.enc.Base64)
 			},
+			sha1: function(message) {
+				return CryptoJS.SHA1(message).toString(CryptoJS.enc.Hex)
+			},
 			nonce: function() {
 				var random = Date.now()+':'+Math.random()
 				return CryptoJS.SHA1(random).toString(CryptoJS.enc.Hex)
@@ -149,6 +153,9 @@
 		return {
 			hmacSha1: function(message, secret) {
 				return crypto.createHmac('sha1', new Buffer(secret, 'utf8')).update(new Buffer(message, 'utf8')).digest('base64')
+			},
+			sha1: function(message) {
+				return crypto.createHash('sha1').update(new Buffer(message, 'utf8')).digest('hex')
 			},
 			nonce: function() {
 				var random = Date.now()+':'+Math.random()
@@ -259,17 +266,7 @@
 		return self
 	}
 
-	var sign = function(prms, ignoreNonce) {
-		if (!ignoreNonce) {
-			prms['nonce']     = backbeam.crypter.nonce()
-			prms['time']      = Date.now().toString()
-		}
-		prms['key']       = options.shared
-		prms['signature'] = signature(prms)
-		return prms
-	}
-
-	var signature = function(data) {
+	var canonicalString = function(data) {
 		var tokens = []
 		var keys = []
 		for (var key in data) {
@@ -289,26 +286,73 @@
 				tokens.push(key+'='+value)
 			}
 		}
-		var signatureBaseString = tokens.join('&')
+		return tokens.join('&')
+	}
+
+	var signature = function(data) {
+		var signatureBaseString = canonicalString(data)
 		return backbeam.crypter.hmacSha1(signatureBaseString, options.secret)
 	}
 
-	var request = function(method, path, params, callback) {
+	var generateCacheString = function(data) {
+		var signatureBaseString = canonicalString(data)
+		return backbeam.crypter.sha1(signatureBaseString)
+	}
+
+	var signedRequest = function(method, path, params, policy, callback) {
 		if (!options.shared || !options.secret) {
 			return backbeam.nextTick(function() {
 				callback(new Error('Bad configuration. Shared or secret API keys not set'))
 			})
 		}
-		var prms = {}
-		for (var key in params) { prms[key] = params[key] }
+		var prms = {}; for (var key in params) { prms[key] = params[key] }
+
 		prms['method'] = method
-		prms['path'] = path
-		sign(prms)
+		prms['path']   = path
+		prms['key']    = options.shared
+
+		if (cache && policy.indexOf('local') >= 0) {
+			var cacheString = generateCacheString(prms)
+			var data = cache.getItem(cacheString)
+			if (data) {
+				backbeam.nextTick(function() {
+					return callback(null, data, true)
+				})
+
+				if (policy.indexOf('or') >= 0) {
+					// we are done
+					return
+				}
+			} else {
+				if (policy.indexOf('remote') === -1) {
+					// only local and local failed
+					backbeam.nextTick(function() {
+						return callback(new Error('CachedDataNotFound'))
+					})
+					return
+				}
+			}
+		}
+
+		prms['nonce']     = backbeam.crypter.nonce()
+		prms['time']      = Date.now().toString()
+		prms['signature'] = signature(prms)
+
 		delete prms['method']
 		delete prms['path']
 
 		var url = options.protocol+'://api-'+options.env+'-'+options.project+'.'+options.host+':'+options.port+path
-		backbeam.requester(method, url, prms, {}, callback)
+		backbeam.requester(method, url, prms, {}, function(err, data) {
+			if (err) { return callback(err) }
+			if (cache && policy.indexOf('local') >= 0) {
+				cache.setItem(cacheString, data)
+			}
+			callback(null, data, false)
+
+			if (policy.indexOf('local') >= 0) {
+				cache.setItem(cacheString, data)
+			}
+		})
 	}
 
 	function stringFromObject(obj, addEntity) {
@@ -427,7 +471,7 @@
 				method = 'POST'
 				path   = '/data/'+entity
 			}
-			request(method, path, commands, function(error, data) {
+			signedRequest(method, path, commands, 'remote', function(error, data, fromCache) {
 				if (error) { return callback(error) }
 				var status = data.status
 				if (!status) { return callback(new BackbeamError('InvalidResponse')) }
@@ -455,7 +499,7 @@
 			var params = {}
 			if (joins) params.joins = joins
 
-			request('GET', '/data/'+entity+'/'+identifier, params, function(error, data) {
+			signedRequest('GET', '/data/'+entity+'/'+identifier, params, 'remote', function(error, data, fromCache) {
 				if (error) { return callback(error) }
 				var status = data.status
 				if (!status) { return callback(new BackbeamError('InvalidResponse')) }
@@ -471,7 +515,7 @@
 			var callback = args.callback()
 
 			// TODO: if not identifier
-			request('DELETE', '/data/'+entity+'/'+identifier, {}, function(error, data) {
+			signedRequest('DELETE', '/data/'+entity+'/'+identifier, {}, 'remote', function(error, data, fromCache) {
 				if (error) { return callback(error) }
 				var status = data.status
 				if (!status) { return callback(new BackbeamError('InvalidResponse')) }
@@ -494,7 +538,8 @@
 			}
 			params['path'  ] = path
 			params['method'] = 'GET'
-			sign(params, true)
+			params['key']       = options.shared
+			params['signature'] = signature(params)
 			delete params['path']
 			delete params['method']
 			var base = options.protocol+'://api-'+options.env+'-'+options.project+'.'+options.host+':'+options.port+path
@@ -584,8 +629,13 @@
 	}
 
 	var select = function(entity) {
+		var policy = 'remote'
 		var q, params
 		return {
+			policy: function(value) {
+				policy = value
+				return this
+			},
 			query: function() {
 				var args = Array.prototype.slice.call(arguments)
 				q = args[0]
@@ -606,7 +656,7 @@
 				var offset   = args.nextNumber('offset')
 				var callback = args.callback()
 
-				request('GET', '/data/'+entity, { q:q || '', params:params || [], limit:limit, offset:offset }, function(error, data) {
+				signedRequest('GET', '/data/'+entity, { q:q || '', params:params || [], limit:limit, offset:offset }, policy, function(error, data, fromCache) {
 					if (error) { return callback(error) }
 					var status = data.status
 					if (!status) { return callback(new BackbeamError('InvalidResponse')) }
@@ -616,7 +666,7 @@
 					for (var i = 0; i < data.ids.length; i++) {
 						objs.push(objects[data.ids[i]])
 					}
-					callback(null, objs, data.count)
+					callback(null, objs, data.count, fromCache)
 				})
 				return this
 			},
@@ -636,7 +686,7 @@
 					lon    : lon,
 				}
 
-				request('GET', '/data/'+entity+'/near/'+field, _params, function(error, data) {
+				signedRequest('GET', '/data/'+entity+'/near/'+field, _params, policy, function(error, data, fromCache) {
 					if (error) { return callback(error) }
 					var status = data.status
 					if (!status) { return callback(new BackbeamError('InvalidResponse')) }
@@ -646,7 +696,7 @@
 					for (var i = 0; i < data.ids.length; i++) {
 						objs.push(objects[data.ids[i]])
 					}
-					callback(null, objs, data.distances)
+					callback(null, objs, data.distances, fromCache)
 				})
 				return this
 			},
@@ -670,7 +720,7 @@
 					nelon  : nelon
 				}
 
-				request('GET', '/data/'+entity+'/bounding/'+field, _params, function(error, data) {
+				signedRequest('GET', '/data/'+entity+'/bounding/'+field, _params, policy, function(error, data, fromCache) {
 					if (error) { return callback(error) }
 					var status = data.status
 					if (!status) { return callback(new BackbeamError('InvalidResponse')) }
@@ -680,11 +730,8 @@
 					for (var i = 0; i < data.ids.length; i++) {
 						objs.push(objects[data.ids[i]])
 					}
-					callback(null, objs)
+					callback(null, objs, fromCache)
 				})
-				return this
-			},
-			next: function(limit) {
 				return this
 			}
 		}
@@ -792,6 +839,27 @@
 		if (!options.port) {
 			options.port = options.protocol === 'https' ? 443 : 80
 		}
+
+		if (typeof _options.cache === 'object') {
+			if (_options.cache.type === 'customCache' && _options.cache.impl) {
+				cache = _options.cache.impl
+			} else {
+				if (typeof require !== 'undefined') {
+					var Cache = require('./cache.js')
+				}
+				if (_options.cache.type === 'default') {
+					cache = new Cache()
+				} else if (_options.cache.type === 'localStorage') {
+					cache = new Cache(-1, false, new Cache.LocalStorageCacheStorage('backbeam'))
+				} else if (_options.cache.type === 'customStorage') {
+					cache = new Cache(-1, false, _options.cache.impl)
+				}
+			}
+		}
+	}
+
+	backbeam.clearCache = function() {
+		cache && cache.clear()
 	}
 
 	function roomName(event) {
@@ -851,7 +919,7 @@
 		var callback = args.callback()
 
 		var params = { token:device, gateway:gateway, channels:channels }
-		request('POST', '/push/subscribe', params, function(error, data) {
+		signedRequest('POST', '/push/subscribe', params, 'remote', function(error, data, fromCache) {
 			if (error) { return callback(error) }
 			var status = data.status
 			if (!status) { return callback(new BackbeamError('InvalidResponse')) }
@@ -868,7 +936,7 @@
 		var callback = args.callback()
 
 		var params = { token:device, gateway:gateway, channels:channels }
-		request('POST', '/push/unsubscribe', params, function(error, data) {
+		signedRequest('POST', '/push/unsubscribe', params, 'remote', function(error, data, fromCache) {
 			if (error) { return callback(error) }
 			var status = data.status
 			if (!status) { return callback(new BackbeamError('InvalidResponse')) }
@@ -884,7 +952,7 @@
 		var callback = args.callback()
 
 		var params = { token:device, gateway:gateway }
-		request('GET', '/push/subscribed-channels', params, function(error, data) {
+		signedRequest('GET', '/push/subscribed-channels', params, 'remote', function(error, data, fromCache) {
 			if (error) { return callback(error) }
 			var status = data.status
 			if (!status) { return callback(new BackbeamError('InvalidResponse')) }
@@ -900,7 +968,7 @@
 		var callback = args.callback()
 
 		var params = { token:device, gateway:gateway }
-		request('POST', '/push/unsubscribe-all', params, function(error, data) {
+		signedRequest('POST', '/push/unsubscribe-all', params, 'remote', function(error, data, fromCache) {
 			if (error) { return callback(error) }
 			var status = data.status
 			if (!status) { return callback(new BackbeamError('InvalidResponse')) }
@@ -916,7 +984,7 @@
 		var callback = args.callback()
 
 		options.channel = channel // TOOD: better clone the options object and not modify it
-		request('POST', '/push/send', options, function(error, data) {
+		signedRequest('POST', '/push/send', options, 'remote', function(error, data, fromCache) {
 			if (error) { return callback(error) }
 			var status = data.status
 			if (!status) { return callback(new BackbeamError('InvalidResponse')) }
@@ -961,7 +1029,7 @@
 		var params = { email:email, password:password }
 		if (joins) params.joins = joins
 
-		request('POST', '/user/email/login', params, function(error, data) {
+		signedRequest('POST', '/user/email/login', params, 'remote', function(error, data, fromCache) {
 			if (error) { return callback(error) }
 			var status = data.status
 			if (!status) { return callback(new BackbeamError('InvalidResponse')) }
@@ -980,7 +1048,7 @@
 		var email    = args.next('email')
 		var callback = args.callback()
 
-		request('POST', '/user/email/lostpassword', {email:email}, function(error, data) {
+		signedRequest('POST', '/user/email/lostpassword', {email:email}, 'remote', function(error, data, fromCache) {
 			if (error) { return callback(error) }
 			var status = data.status
 			if (!status) { return callback(new BackbeamError('InvalidResponse')) }
@@ -1000,7 +1068,7 @@
 		if (joins)  body.joins = joins
 		if (params) body.params = params
 
-		request('POST', '/user/'+provider+'/signup', body, function(error, data) {
+		signedRequest('POST', '/user/'+provider+'/signup', body, 'remote', function(error, data, fromCache) {
 			if (error) { return callback(error) }
 			var status = data.status
 			var isNew = true
