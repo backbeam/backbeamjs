@@ -1,11 +1,17 @@
 (function(undefined) {
 
 	var currentUser   = null
+	var authCode      = null
+	var sessionStore  = null
 	var options       = {}
 	var cache         = null
 	var socket        = null
 	var roomDelegates = {}
 	var realtimeDelegates = []
+
+	if (typeof require !== 'undefined') {
+		Cache = require('./cache.js')
+	}
 
 	if (typeof window !== 'undefined') {
 		var backbeam = window.backbeam = window.backbeam || {}
@@ -55,7 +61,7 @@
 	function createBrowserRequester() {
 		if (typeof XMLHttpRequest === 'undefined' && typeof Titanium === 'undefined') return null
 
-		return function(method, url, params, headers, callback) {
+		return function(method, url, params, headers, responseHeaders, callback) {
 			var xhr
 			if (typeof Titanium !== 'undefined') {
 				xhr = Titanium.Network.createHTTPClient()
@@ -73,7 +79,17 @@
 				} catch(e) {
 					return callback(e)
 				}
-				callback(null, data)
+				var resHeaders = {}
+				if (responseHeaders) {
+					for (var i = 0; i < responseHeaders.length; i++) {
+						var key   = responseHeaders[i]
+						var value = xhr.getResponseHeader(key)
+						if (value) {
+							resHeaders[key] = value
+						}
+					}
+				}
+				callback(null, data, resHeaders)
 			}
 
 			xhr.onerror = function(e) {
@@ -100,7 +116,7 @@
 	function createNodeRequester() {
 		if (typeof require === 'undefined') return null
 
-		return function(method, url, params, headers, callback) {
+		return function(method, url, params, headers, responseHeaders, callback) {
 			var opts = { url:url, method:method, headers:headers }
 			if (method === 'GET') {
 				opts.qs = params
@@ -114,7 +130,17 @@
 				} catch(e) {
 					return callback(e)
 				}
-				callback(null, data)
+				var resHeaders = {}
+				if (responseHeaders) {
+					for (var i = 0; i < responseHeaders.length; i++) {
+						var key   = responseHeaders[i]
+						var value = xhr.getResponseHeader(key)
+						if (value) {
+							resHeaders[key] = value
+						}
+					}
+				}
+				callback(null, data, resHeaders)
 			})
 		}
 	}
@@ -299,6 +325,32 @@
 		return backbeam.crypter.sha1(signatureBaseString)
 	}
 
+	var enoughWithCache = function(prms, policy, callback) {
+		if (cache && policy.indexOf('local') >= 0) {
+			var cacheString = generateCacheString(prms)
+			var data = cache.getItem(cacheString)
+			if (data) {
+				backbeam.nextTick(function() {
+					return callback(null, data, true)
+				})
+
+				if (policy.indexOf('or') >= 0) {
+					// we are done
+					return null
+				}
+			} else {
+				if (policy.indexOf('remote') === -1) {
+					// only local and local failed
+					backbeam.nextTick(function() {
+						return callback(new Error('CachedDataNotFound'))
+					})
+					return null
+				}
+			}
+		}
+		return { cacheString: cacheString }
+	}
+
 	var signedRequest = function(method, path, params, policy, callback) {
 		if (!options.shared || !options.secret) {
 			return backbeam.nextTick(function() {
@@ -310,29 +362,12 @@
 		prms['method'] = method
 		prms['path']   = path
 		prms['key']    = options.shared
-
-		if (cache && policy.indexOf('local') >= 0) {
-			var cacheString = generateCacheString(prms)
-			var data = cache.getItem(cacheString)
-			if (data) {
-				backbeam.nextTick(function() {
-					return callback(null, data, true)
-				})
-
-				if (policy.indexOf('or') >= 0) {
-					// we are done
-					return
-				}
-			} else {
-				if (policy.indexOf('remote') === -1) {
-					// only local and local failed
-					backbeam.nextTick(function() {
-						return callback(new Error('CachedDataNotFound'))
-					})
-					return
-				}
-			}
+		if (authCode) {
+			prms['auth'] = authCode
 		}
+
+		var cacheInfo = enoughWithCache(prms, policy, callback)
+		if (!cacheInfo) return
 
 		prms['nonce']     = backbeam.crypter.nonce()
 		prms['time']      = Date.now().toString()
@@ -342,16 +377,14 @@
 		delete prms['path']
 
 		var url = options.protocol+'://api-'+options.env+'-'+options.project+'.'+options.host+':'+options.port+path
-		backbeam.requester(method, url, prms, {}, function(err, data) {
+		backbeam.requester(method, url, prms, {}, null, function(err, data, resHeaders) {
 			if (err) { return callback(err) }
-			if (cache && policy.indexOf('local') >= 0) {
-				cache.setItem(cacheString, data)
-			}
-			callback(null, data, false)
 
-			if (policy.indexOf('local') >= 0) {
-				cache.setItem(cacheString, data)
+			if (cacheInfo.cacheString) {
+				cache.setItem(cacheInfo.cacheString, data)
 			}
+
+			callback(null, data, false)
 		})
 	}
 
@@ -483,7 +516,8 @@
 				if (entity === 'user' && method === 'POST') {
 					backbeam.logout()
 					if (data.status === 'Success') { // not PendingValidation
-						setCurrentUser(obj)
+						delete values['password']
+						setCurrentUser(obj, data.auth)
 					}
 				}
 				callback(null, obj)
@@ -844,9 +878,6 @@
 			if (_options.cache.type === 'customCache' && _options.cache.impl) {
 				cache = _options.cache.impl
 			} else {
-				if (typeof require !== 'undefined') {
-					var Cache = require('./cache.js')
-				}
 				if (_options.cache.type === 'default') {
 					cache = new Cache()
 				} else if (_options.cache.type === 'localStorage') {
@@ -854,6 +885,15 @@
 				} else if (_options.cache.type === 'customStorage') {
 					cache = new Cache(-1, false, _options.cache.impl)
 				}
+			}
+		}
+
+		if (_options.sessionStore) {
+			sessionStore = _options.sessionStore
+			var info = sessionStore.restore()
+			if (info.user && info.auth) {
+				currentUser = info.user
+				authCode = info.auth
 			}
 		}
 	}
@@ -996,8 +1036,17 @@
 	backbeam.select = select
 	backbeam.empty  = empty
 
-	function setCurrentUser(object) {
-		currentUser = object
+	function setCurrentUser(object, _authCode) {
+		if (object && _authCode) {
+			currentUser = object
+			authCode = _authCode
+		} else {
+			currentUser = null
+			authCode = null
+		}
+		if (sessionStore) {
+			sessionStore.store(object, authCode)
+		}
 	}
 
 	backbeam.currentUser = function() {
@@ -1005,7 +1054,7 @@
 	}
 
 	backbeam.logout = function() {
-		currentUser = null
+		setCurrentUser(null, null)
 	}
 
 	backbeam.read = function() {
@@ -1037,7 +1086,7 @@
 			var objects = objectsFromValues(data.objects, null)
 			var user = objects[data.id]
 			if (user) {
-				setCurrentUser(user) // TODO: data.auth
+				setCurrentUser(user, data.auth)
 			}
 			callback(null, user)
 		})
@@ -1078,7 +1127,7 @@
 			var objects = objectsFromValues(data.objects, null)
 			var user = objects[data.id]
 			if (user) {
-				setCurrentUser(user) // TODO: data.auth
+				setCurrentUser(user, data.auth)
 			} else {
 				isNew = undefined
 			}
@@ -1102,24 +1151,50 @@
 		backbeam.socialSignup.apply(backbeam, args)
 	}
 
-	function requestController(method, path, params, callback) {
-		var prms = {}
+	function requestController(method, path, params, policy, callback) {
+		var prms = {} // params to be used in the cachestring
 		if (params) {
 			for (var key in params) {
-				prms[key] = params[key]
+				if (params.hasOwnProperty(key)) {
+					prms['_'+key] = params[key]
+				}
 			}
 		}
+
+		policy = policy || 'remote'
+		prms['host'   ] = options.host
+		prms['port'   ] = options.port
+		prms['project'] = options.project
+		prms['env'    ] = options.env
+		prms['method' ] = method
+		prms['path'   ] = path
+		prms['version'] = options.webVersion || 'default'
+		prms['auth'   ] = authCode || ''
+
+		var cacheInfo = enoughWithCache(prms, policy, callback)
+		if (!cacheInfo) return
+
 		var url = null
 		if (options.webVersion) {
 			url = options.protocol+'://web-'+options.webVersion+'-'+options.env+'-'+options.project+'.'+options.host+':'+options.port+path
 		} else {
 			url = options.protocol+'://web-'+options.env+'-'+options.project+'.'+options.host+':'+options.port+path
 		}
-		var headers = {}
+		var headers = { 'x-backbeam-sdk':'js' }
 		if (options.httpAuth) {
 			headers['Authorization'] = 'Basic '+backbeam.crypter.base64(options.project+':'+options.httpAuth)
 		}
-		backbeam.requester(method, url, params, headers, callback)
+		if (authCode) {
+			headers['x-backbeam-auth'] = authCode
+		}
+		backbeam.requester(method, url, params, headers, ['x-backbeam-auth', 'x-backbeam-user'], function(err, data, resHeaders) {
+			if (err) { return callback(err) }
+
+			if (cacheInfo.cacheString) {
+				cache.setItem(cacheInfo.cacheString, data)
+			}
+			return callback(null, data, resHeaders)
+		})
 	}
 
 	backbeam.requestJSON = function() {
@@ -1127,10 +1202,25 @@
 		var method      = args.nextString('method')
 		var path        = args.nextString('path')
 		var params      = args.nextObject('params', true)
+		var policy      = args.nextObject('policy', true)
 		var callback    = args.callback()
 
-		requestController(method, path, params, function(err, data) {
+		requestController(method, path, params, policy, function(err, data, resHeaders) {
 			if (err) { return callback(err) }
+
+			if (resHeaders) {
+				var auth = resHeaders['x-backbeam-auth']
+				var user = resHeaders['x-backbeam-user']
+
+				if (typeof auth === 'string') {
+					if (auth.length === 0) {
+						logout()
+					} else {
+						setCurrentUser(backbeam.empty('user', user), auth)
+					}
+				}
+			}
+
 			callback(null, data)
 		})
 	}
@@ -1140,15 +1230,30 @@
 		var method      = args.nextString('method')
 		var path        = args.nextString('path')
 		var params      = args.nextObject('params', true)
+		var policy      = args.nextObject('policy', true)
 		var callback    = args.callback()
 
-		requestController(method, path, params, function(err, data) {
+		requestController(method, path, params, policy, function(err, data, resHeaders) {
 			if (err) { return callback(err) }
 
 			var status = data.status
 			if (!status) { return callback(new BackbeamError('InvalidResponse')) }
 			if (status !== 'Success') { return callback(new BackbeamError(status, data.errorMessage)) }
 			var objects = objectsFromValues(data.objects, null)
+
+			if (resHeaders) {
+				var auth = resHeaders['x-backbeam-auth']
+				var user = resHeaders['x-backbeam-user']
+
+				if (typeof auth === 'string') {
+					if (auth.length === 0) {
+						logout()
+					} else {
+						setCurrentUser(objects[user] || backbeam.empty('user', user), auth)
+					}
+				}
+			}
+
 			var objs = []
 			for (var i = 0; i < data.ids.length; i++) {
 				objs.push(objects[data.ids[i]])

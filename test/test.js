@@ -16,7 +16,19 @@ before(function(done) {
 		secret: 'c7b7726df5a0e96304cd6e1d44e86036038191826b52bc11dff6e2a626ea1c46b0344dcc069a14dd',
 		port:'8079',
 		env:'dev',
-		cache: { type: cacheType}
+		cache: { type: cacheType },
+		sessionStore: {
+			store: function(user, authCode) {
+				if (user && authCode) {
+					// console.log('store', JSON.stringify(user), authCode)
+				} else {
+
+				}
+			},
+			restore: function() {
+				return {}
+			}
+		}
 	})
 	backbeam.clearCache()
 	done()
