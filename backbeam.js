@@ -491,6 +491,32 @@
 			}
 		}
 
+		obj.serialize = function() {
+			var o = {}
+			
+			if (obj.createdAt()) o['created_at'] = obj.createdAt().getTime()
+			if (obj.updatedAt()) o['updated_at'] = obj.updatedAt().getTime()
+			o['_id'] = obj.id()
+			o['entity'] = obj.entity()
+
+			for (var key in values) {
+				if (values.hasOwnProperty(key)) {
+					var value = values[key]
+
+					if (value) {
+						if (value.constructor.name === 'Date') {
+							o[key+'#d'] = value.getTime()
+						} else if (typeof value === 'number') {
+							o[key+'#n'] = value
+						} else if (typeof value === 'string') {
+							o[key+'#t'] = value
+						}
+					}
+				}
+			}
+			return o
+		}
+
 		obj.save = function() {
 			var args     = guments(arguments, true)
 			var callback = args.callback()
@@ -891,9 +917,12 @@
 		if (_options.sessionStore) {
 			sessionStore = _options.sessionStore
 			var info = sessionStore.restore()
-			if (info.user && info.auth) {
-				currentUser = info.user
-				authCode = info.auth
+			if (info) {
+				var data = JSON.parse(info)
+				currentUser = backbeam.empty('user', data.user._id)
+				currentUser._fill(data.user, {})
+				delete data.user._id
+				authCode = data.auth
 			}
 		}
 	}
@@ -1040,12 +1069,18 @@
 		if (object && _authCode) {
 			currentUser = object
 			authCode = _authCode
+			if (sessionStore) {
+				var data = {}
+				data.user = currentUser.serialize()
+				data.auth = authCode
+				sessionStore.store(JSON.stringify(data))
+			}
 		} else {
 			currentUser = null
 			authCode = null
-		}
-		if (sessionStore) {
-			sessionStore.store(object, authCode)
+			if (sessionStore) {
+				sessionStore.store(null, null)
+			}
 		}
 	}
 
