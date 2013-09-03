@@ -69,7 +69,7 @@
 				xhr = new XMLHttpRequest()
 			}
 			var query = params ? serialize(params) : ''
-			if (method === 'GET') {
+			if (method === 'GET' || method === 'DELETE') {
 				url += '?'+query
 			}
 			xhr.open(method, url, true)
@@ -118,7 +118,7 @@
 
 		return function(method, url, params, headers, responseHeaders, callback) {
 			var opts = { url:url, method:method, headers:headers }
-			if (method === 'GET') {
+			if (method === 'GET' || method === 'DELETE') {
 				opts.qs = params
 			} else {
 				opts.form = params
@@ -384,6 +384,8 @@
 				cache.setItem(cacheInfo.cacheString, data)
 			}
 
+			if (data.status === 'InvalidAuthCode') { backbeam.logout() }
+
 			callback(null, data, false)
 		})
 	}
@@ -395,6 +397,9 @@
 		if (typeof obj === 'number') {
 			return ''+obj
 		}
+		if (typeof obj === 'boolean') {
+			return obj ? '1' : '0'
+		}
 		if (obj && obj.id && typeof obj.id === 'function' && obj.entity && typeof obj.entity === 'function') {
 			if (addEntity) {
 				return obj.entity()+'/'+obj.id()
@@ -405,10 +410,12 @@
 		if (obj && obj.constructor && obj.constructor == Date) {
 			return ''+obj.getTime()
 		}
+		if (obj.constructor.name === 'Array' || obj.constructor.name === 'Object') {
+			return JSON.stringify(obj)
+		}
 		if (obj && typeof obj.toString === 'function') {
 			return obj.toString()
 		}
-		// TODO: location
 		return null
 	}
 
@@ -510,6 +517,12 @@
 							o[key+'#n'] = value
 						} else if (typeof value === 'string') {
 							o[key+'#t'] = value
+						} else if (typeof value === 'boolean') {
+							o[key+'#b'] = value
+						} else if (value.constructor.name === 'Location') {
+							o[key+'#l'] = value.toString()
+						} else if (value.constructor.name === 'Day') {
+							o[key+'#c'] = value.toString()
 						}
 					}
 				}
@@ -619,7 +632,6 @@
 					var i = field.indexOf('#')
 					if (i > 0) {
 						var type = field.substring(i+1, field.length)
-						// TODO: check types
 						if (type === 'r') {
 							if (value.constructor == Object) {
 								if (value.id && value.type) {
@@ -641,9 +653,14 @@
 								}
 							}
 						} else if (type === 'd') {
-							value = new Date(parseInt(value, 10) || 0)
+							value = new Date(+value || 0)
 						} else if (type === 'n') {
-							value = parseFloat(value) || 0
+							value = +value || 0
+						} else if (type === 'l') {
+							value = new backbeam.Location(value.addr, value.lat, value.lon)
+						} else if (type === 'c') {
+							var comps = value.split('-')
+							value = new backbeam.Day(+comps[0], +comps[1], +comps[2])
 						}
 
 						if (value) {
@@ -691,110 +708,156 @@
 	var select = function(entity) {
 		var policy = 'remote'
 		var q, params
-		return {
-			policy: function(value) {
-				policy = value
-				return this
-			},
-			query: function() {
-				var args = Array.prototype.slice.call(arguments)
-				q = args[0]
-				var prms = null
-				if (args[1] && args[1].constructor == Array) { prms = args[1] }
-				else { prms = args.slice(1, args.length) }
-				if (prms) {
-					params = prms
-					for (var i = 0; i < params.length; i++) {
-						params[i] = stringFromObject(params[i], true) // TODO: if returns null?
-					}
-				}
-				return this
-			},
-			fetch: function() {
-				var args     = guments(arguments, true)
-				var limit    = args.nextNumber('limit')
-				var offset   = args.nextNumber('offset')
-				var callback = args.callback()
+		var query = {}
 
-				signedRequest('GET', '/data/'+entity, { q:q || '', params:params || [], limit:limit, offset:offset }, policy, function(error, data, fromCache) {
-					if (error) { return callback(error) }
-					var status = data.status
-					if (!status) { return callback(new BackbeamError('InvalidResponse')) }
-					if (status !== 'Success') { return callback(new BackbeamError(status, data.errorMessage)) }
-					var objects = objectsFromValues(data.objects, null)
-					var objs = []
-					for (var i = 0; i < data.ids.length; i++) {
-						objs.push(objects[data.ids[i]])
-					}
-					callback(null, objs, data.count, fromCache)
-				})
-				return this
-			},
-			near: function() {
-				var args     = guments(arguments, true)
-				var field    = args.nextString('field')
-				var lat      = args.nextNumber('lat')
-				var lon      = args.nextNumber('lon')
-				var limit    = args.nextNumber('limit')
-				var callback = args.callback()
-
-				var _params = {
-					q      : q || '',
-					params : params || [],
-					limit  : limit,
-					lat    : lat,
-					lon    : lon,
-				}
-
-				signedRequest('GET', '/data/'+entity+'/near/'+field, _params, policy, function(error, data, fromCache) {
-					if (error) { return callback(error) }
-					var status = data.status
-					if (!status) { return callback(new BackbeamError('InvalidResponse')) }
-					if (status !== 'Success') { return callback(new BackbeamError(status, data.errorMessage)) }
-					var objects = objectsFromValues(data.objects, null)
-					var objs = []
-					for (var i = 0; i < data.ids.length; i++) {
-						objs.push(objects[data.ids[i]])
-					}
-					callback(null, objs, data.distances, fromCache)
-				})
-				return this
-			},
-			bounding: function() {
-				var args     = guments(arguments, true)
-				var field    = args.nextString('field')
-				var swlat    = args.nextNumber('swlat')
-				var swlon    = args.nextNumber('swlon')
-				var nelat    = args.nextNumber('nelat')
-				var nelon    = args.nextNumber('nelon')
-				var limit    = args.nextNumber('limit')
-				var callback = args.callback()
-
-				var _params = {
-					q      : q || '',
-					params : params || [],
-					limit  : limit,
-					swlat  : swlat,
-					nelat  : nelat,
-					swlon  : swlon,
-					nelon  : nelon
-				}
-
-				signedRequest('GET', '/data/'+entity+'/bounding/'+field, _params, policy, function(error, data, fromCache) {
-					if (error) { return callback(error) }
-					var status = data.status
-					if (!status) { return callback(new BackbeamError('InvalidResponse')) }
-					if (status !== 'Success') { return callback(new BackbeamError(status, data.errorMessage)) }
-					var objects = objectsFromValues(data.objects, null)
-					var objs = []
-					for (var i = 0; i < data.ids.length; i++) {
-						objs.push(objects[data.ids[i]])
-					}
-					callback(null, objs, fromCache)
-				})
-				return this
-			}
+		query.policy = function(value) {
+			policy = value
+			return this
 		}
+
+		query.query = function() {
+			var args = Array.prototype.slice.call(arguments)
+			q = args[0]
+			var prms = null
+			if (args[1] && args[1].constructor == Array) { prms = args[1] }
+			else { prms = args.slice(1, args.length) }
+			if (prms) {
+				params = prms
+				for (var i = 0; i < params.length; i++) {
+					params[i] = stringFromObject(params[i], true) // TODO: if returns null?
+				}
+			}
+			return this
+		}
+
+		query.fetch = function() {
+			var args     = guments(arguments, true)
+			var limit    = args.nextNumber('limit')
+			var offset   = args.nextNumber('offset')
+			var callback = args.callback()
+
+			signedRequest('GET', '/data/'+entity, { q:q || '', params:params || [], limit:limit, offset:offset }, policy, function(error, data, fromCache) {
+				if (error) { return callback(error) }
+				var status = data.status
+				if (!status) { return callback(new BackbeamError('InvalidResponse')) }
+				if (status !== 'Success') { return callback(new BackbeamError(status, data.errorMessage)) }
+				var objects = objectsFromValues(data.objects, null)
+				var objs = []
+				for (var i = 0; i < data.ids.length; i++) {
+					objs.push(objects[data.ids[i]])
+				}
+				callback(null, objs, data.count, fromCache)
+			})
+			return this
+		}
+
+		query.near = function() {
+			var args     = guments(arguments, true)
+			var field    = args.nextString('field')
+			var lat      = args.nextNumber('lat')
+			var lon      = args.nextNumber('lon')
+			var limit    = args.nextNumber('limit')
+			var callback = args.callback()
+
+			var _params = {
+				q      : q || '',
+				params : params || [],
+				limit  : limit,
+				lat    : lat,
+				lon    : lon,
+			}
+
+			signedRequest('GET', '/data/'+entity+'/near/'+field, _params, policy, function(error, data, fromCache) {
+				if (error) { return callback(error) }
+				var status = data.status
+				if (!status) { return callback(new BackbeamError('InvalidResponse')) }
+				if (status !== 'Success') { return callback(new BackbeamError(status, data.errorMessage)) }
+				var objects = objectsFromValues(data.objects, null)
+				var objs = []
+				for (var i = 0; i < data.ids.length; i++) {
+					objs.push(objects[data.ids[i]])
+				}
+				callback(null, objs, data.distances, fromCache)
+			})
+			return this
+		}
+
+		query.bounding = function() {
+			var args     = guments(arguments, true)
+			var field    = args.nextString('field')
+			var swlat    = args.nextNumber('swlat')
+			var swlon    = args.nextNumber('swlon')
+			var nelat    = args.nextNumber('nelat')
+			var nelon    = args.nextNumber('nelon')
+			var limit    = args.nextNumber('limit')
+			var callback = args.callback()
+
+			var _params = {
+				q      : q || '',
+				params : params || [],
+				limit  : limit,
+				swlat  : swlat,
+				nelat  : nelat,
+				swlon  : swlon,
+				nelon  : nelon
+			}
+
+			signedRequest('GET', '/data/'+entity+'/bounding/'+field, _params, policy, function(error, data, fromCache) {
+				if (error) { return callback(error) }
+				var status = data.status
+				if (!status) { return callback(new BackbeamError('InvalidResponse')) }
+				if (status !== 'Success') { return callback(new BackbeamError(status, data.errorMessage)) }
+				var objects = objectsFromValues(data.objects, null)
+				var objs = []
+				for (var i = 0; i < data.ids.length; i++) {
+					objs.push(objects[data.ids[i]])
+				}
+				callback(null, objs, fromCache)
+			})
+			return this
+		}
+
+		query._remove = function(_params, callback) {
+			signedRequest('DELETE', '/data/'+entity, _params, policy, function(error, data, fromCache) {
+				if (error) { return callback(error) }
+				var status = data.status
+				if (!status) { return callback(new BackbeamError('InvalidResponse')) }
+				if (status !== 'Success') { return callback(new BackbeamError(status, data.errorMessage)) }
+				callback(null, data.removed)
+			})
+		}
+
+		query.remove = function() {
+			var args      = guments(arguments, true)
+			var limit     = args.nextNumber('limit')
+			var offset    = args.nextNumber('offset')
+			var _callback = args.callback()
+
+			var _params = {
+				q      : q || '',
+				params : params || [],
+				limit  : limit,
+				offset : offset,
+			}
+			query._remove(_params, _callback)
+			return this
+		}
+
+		query.removeAll = function() {
+			var args      = guments(arguments, true)
+			var _callback = args.callback()
+
+			var _params = {
+				q      : q || '',
+				params : params || [],
+				limit  : 'all',
+				offset : 0
+			}
+			query._remove(_params, _callback)
+			return this
+		}
+
+		return query
 	}
 
 	function loadScript(src, callback) {
@@ -924,6 +987,41 @@
 				delete data.user._id
 				authCode = data.auth
 			}
+		}
+	}
+
+	backbeam.Location = function Location(addr, lat, lon, alt) {
+		this.addr = addr
+		this.lat  = lat
+		this.lon  = lon
+		this.alt  = alt
+
+		this.toString = function() {
+			return (+this.lat||0)+','+(+this.lon||0)+','+(+this.alt||0)+'|'+(this.addr||'')
+		}
+	}
+
+	function zeroFill(str, n) { return (new Array(n + 1 - str.length)).join('0') + str }
+
+	backbeam.Day = function Day(year, month, day) {
+		if (!year) year = new Date()
+
+		if (year && year.constructor.name === 'Date') {
+			this.year  = year.getFullYear()
+			this.month = year.getMonth() + 1
+			this.day   = year.getDate()
+		} else {
+			this.year  = year
+			this.month = month
+			this.day   = day
+		}
+
+		this.toDate = function() {
+			return new Date(this.year, this.month-1, this.day)
+		}
+
+		this.toString = function() {
+			return [zeroFill(this.year+'', 4), zeroFill(this.month+'', 2), zeroFill(this.day+'', 2)].join('-')
 		}
 	}
 

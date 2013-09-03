@@ -89,7 +89,7 @@ describe('Test backbeam', function() {
 
 			backbeam.select('place').query('where type=?', ['Terraza']).policy('local or remote').fetch(100, 0, function(error, objects, total, fromCache) {
 				chai.assert.isNull(error)
-				chai.assert.equal(fromCache, true)
+				chai.assert.equal(fromCache, backbeam.sdk ? false : true)
 				chai.assert.equal(objects.length, 1)
 				chai.assert.equal(objects[0].entity(), 'place')
 				chai.assert.equal(objects[0].get('name'), 'Final name')
