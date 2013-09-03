@@ -684,7 +684,11 @@
 		}
 
 		obj.getFacebookData = function(key) {
-			return obj.getLoginData('facebook', key)
+			return obj.getLoginData('fb', key)
+		}
+
+		obj.getGooglePlusData = function(key) {
+			return obj.getLoginData('gp', key)
 		}
 
 		return obj
@@ -1044,6 +1048,10 @@
 		}
 	}
 
+	backbeam.unsubscribeFromAllRealTimeConnectionEvents = function() {
+		realtimeDelegates = []
+	}
+
 	backbeam.subscribeToRealTimeEvents = function(event, delegate) {
 		var room = roomName(event)
 		var arr = roomDelegates[room]
@@ -1064,6 +1072,13 @@
 		arr.splice(index, 1)
 		if (!socket) return false;
 		socket.emit('unsubscribe', { room:room })
+		return true
+	}
+
+	backbeam.unsubscribeFromAllRealTimeEvents = function() {
+		roomDelegates = {}
+		if (!socket) return false;
+		socket.emit('unsubscribe-all', {})
 		return true
 	}
 
@@ -1437,6 +1452,10 @@
 			},
 			addFacebook: function() {
 				addWithPrefix(arguments, 'fb:')
+				return this
+			},
+			addGooglePlus: function() {
+				addWithPrefix(arguments, 'gp:')
 				return this
 			},
 			addEmail: function() {
