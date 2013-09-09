@@ -903,51 +903,68 @@
 				return fireConnectionEvent('connectFailed', err)
 			}
 			var base = options.protocol+'://api-'+options.env+'-'+options.project+'.'+options.host+':'+options.port
-			socket = io.connect(base)
-			socket.on('msg', function(message) {
-				if (message.room) {
-					var arr = roomDelegates[message.room]
-					var prefix = roomName('')
-					if (message.room.indexOf(prefix) === 0) {
-						var event = message.room.substring(prefix.length)
-						if (arr) {
-							var _message = {}
-							for (var key in message) {
-								if (key.indexOf('_') === 0) {
-									_message[key.substring(1)] = message[key]
+			if(!socket){
+				socket = io.connect(base)
+				socket.on('msg', function(message) {
+					if (message.room) {
+						var arr = roomDelegates[message.room]
+						var prefix = roomName('')
+						if (message.room.indexOf(prefix) === 0) {
+							var event = message.room.substring(prefix.length)
+							if (arr) {
+								var _message = {}
+								for (var key in message) {
+									if (key.indexOf('_') === 0) {
+										_message[key.substring(1)] = message[key]
+									}
 								}
-							}
-							for (var i = 0; i < arr.length; i++) {
-								arr[i] && arr[i](event, _message)
+								for (var i = 0; i < arr.length; i++) {
+									arr[i] && arr[i](event, _message)
+								}
 							}
 						}
 					}
-				}
-			})
-			// See exposed events: https://github.com/LearnBoost/socket.io/wiki/Exposed-events
-			socket.on('disconnect', function() {
-				fireConnectionEvent('disconnect')
-			})
-			socket.on('connecting', function() {
-				fireConnectionEvent('connecting')
-			})
-			socket.on('connect_failed', function() {
-				fireConnectionEvent('connectFailed')
-			})
-			socket.on('error', function() {
-				fireConnectionEvent('connectFailed')
-			})
-			socket.on('connect', function() {
-				for (var room in roomDelegates) {
-					socket.emit('subscribe', { room:room })
-				}
-				fireConnectionEvent('connect')
-			})
+				})
+				// See exposed events: https://github.com/LearnBoost/socket.io/wiki/Exposed-events
+				socket.on('disconnect', function() {
+					fireConnectionEvent('disconnect')
+				})
+				socket.on('connecting', function() {
+					fireConnectionEvent('connecting')
+				})
+				socket.on('connect_failed', function() {
+					fireConnectionEvent('connectFailed')
+				})
+				socket.on('error', function() {
+					fireConnectionEvent('connectFailed')
+				})
+				socket.on('connect', function() {
+					for (var room in roomDelegates) {
+						socket.emit('subscribe', { room:room })
+					}
+					fireConnectionEvent('connect')
+				})
+			} else {
+				socket.socket.connect();
+			}
 		})
 	}
 
 	backbeam.enableRealTime = function() {
 		connect()
+	}
+
+	backbeam.disableRealTime = function() {
+		disconnect()
+	}
+
+	function disconnect(){
+		console.log('Desconeeectaaaa!!!')
+		loadSocketio(function(){
+			console.log(io)
+			socket.disconnect()
+		})
+		
 	}
 
 	backbeam.configure   = function(_options) {
