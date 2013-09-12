@@ -959,7 +959,6 @@
 	}
 
 	function disconnect(){
-		console.log('Desconeeectaaaa!!!')
 		loadSocketio(function(){
 			console.log(io)
 			socket.disconnect()
