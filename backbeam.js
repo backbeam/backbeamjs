@@ -895,7 +895,7 @@
 				return fireConnectionEvent('connectFailed', err)
 			}
 			var base = options.protocol+'://api-'+options.env+'-'+options.project+'.'+options.host+':'+options.port
-			if(!socket){
+			if (!socket) {
 				socket = io.connect(base)
 				socket.on('msg', function(message) {
 					if (message.room) {
