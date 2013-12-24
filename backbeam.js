@@ -130,17 +130,7 @@
 				} catch(e) {
 					return callback(e)
 				}
-				var resHeaders = {}
-				if (responseHeaders) {
-					for (var i = 0; i < responseHeaders.length; i++) {
-						var key   = responseHeaders[i]
-						var value = xhr.getResponseHeader(key)
-						if (value) {
-							resHeaders[key] = value
-						}
-					}
-				}
-				callback(null, data, resHeaders)
+				callback(null, data, response.headers)
 			})
 		}
 	}
@@ -391,6 +381,8 @@
 	}
 
 	function stringFromObject(obj, addEntity) {
+		if (obj === null || typeof obj === 'undefined') return null
+		
 		if (typeof obj === 'string') {
 			return obj
 		}
