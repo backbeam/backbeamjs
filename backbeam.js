@@ -683,6 +683,14 @@
 			return obj.getLoginData('gp', key)
 		}
 
+		obj.getLinkedInData = function(key) {
+			return obj.getLoginData('ln', key)
+		}
+
+		obj.getGitHubData = function(key) {
+			return obj.getLoginData('gh', key)
+		}
+
 		return obj
 	}
 
@@ -1291,20 +1299,32 @@
 		})
 	}
 
-	backbeam.twitterSignup = function() {
-		var args = ['twitter']
-		for (var i = 0; i < arguments.length; i++) {
-			args.push(arguments[i])
+	function socialSignup(provider, _arguments) {
+		var args = [provider]
+		for (var i = 0; i < _arguments.length; i++) {
+			args.push(_arguments[i])
 		}
 		backbeam.socialSignup.apply(backbeam, args)
 	}
 
+	backbeam.twitterSignup = function() {
+		socialSignup('twitter', arguments)
+	}
+
 	backbeam.facebookSignup = function() {
-		var args = ['facebook']
-		for (var i = 0; i < arguments.length; i++) {
-			args.push(arguments[i])
-		}
-		backbeam.socialSignup.apply(backbeam, args)
+		socialSignup('facebook', arguments)
+	}
+
+	backbeam.googlePlusSignup = function() {
+		socialSignup('googleplus', arguments)
+	}
+
+	backbeam.linkedInSignup = function() {
+		socialSignup('linkedin', arguments)
+	}
+
+	backbeam.githubSignup = function() {
+		socialSignup('github', arguments)
 	}
 
 	function requestController(method, path, params, policy, callback) {
@@ -1464,6 +1484,14 @@
 			},
 			addGooglePlus: function() {
 				addWithPrefix(arguments, 'gp:')
+				return this
+			},
+			addLinkedIn: function() {
+				addWithPrefix(arguments, 'ln:')
+				return this
+			},
+			addGitHub: function() {
+				addWithPrefix(arguments, 'gh:')
 				return this
 			},
 			addEmail: function() {

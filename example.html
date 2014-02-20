@@ -24,8 +24,6 @@
 			env:'dev',
 			shared: 'xxx',
 			secret: 'xxx',
-			host:'backbeamapps.dev',
-			port:8079,
 			webVersion: 'v1',
 			httpAuth: 'xxxx'
 		})
@@ -59,6 +57,12 @@
 
 		backbeam.requestJSON('GET', '/json', {}, function(err, data) {
 			console.log('data =', data.hello)
+		})
+
+		backbeam.linkedInSignup({ access_token: 'the_user_access_token' }, function(err, user, isNew) {
+			if (user) {
+				console.log('success!', user.getLinkedInData('first_name'), user.getLinkedInData('last_name'), user.getLinkedInData('headline'))
+			}
 		})
 
 	</script>
