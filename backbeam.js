@@ -635,7 +635,7 @@
 										var id = objs[j]
 										arr.push(references[id])
 									}
-									value.result = arr
+									value = { result: arr, count: value.count }
 								}
 							} else {
 								if (references) {
@@ -902,7 +902,7 @@
 			if (err) {
 				return fireConnectionEvent('connectFailed', err)
 			}
-			var base = options.protocol+'://api-'+options.env+'-'+options.project+'.'+options.host+':'+options.port
+			var base = options.protocol+'://'+options.host+':'+options.port
 			if (!socket) {
 				socket = io.connect(base)
 				socket.on('msg', function(message) {
