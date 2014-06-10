@@ -1,3 +1,4 @@
+var credentials = null
 if (typeof backbeam === 'undefined') {
 	var backbeam = require('../backbeam')
 }
@@ -155,4 +156,92 @@ describe('Test backbeam', function() {
 			done()
 		})
 	})
+
+	if (credentials) {
+
+		it('Twitter signup', function(done) {
+			var cred = credentials.twitter
+			backbeam.twitterSignup(cred, function(error, user, isNew) {
+				chai.assert.isNull(error)
+				chai.assert.equal(isNew, true)
+				chai.assert.ok(backbeam.currentUser())
+				chai.assert.equal(user, backbeam.currentUser())
+				chai.assert.ok(user.getTwitterData('id'))
+				chai.assert.ok(user.getTwitterData('screen_name'))
+				chai.assert.ok(user.getTwitterData('name'))
+
+				backbeam.twitterSignup(cred, function(error, user, isNew) {
+					chai.assert.isNull(error)
+					chai.assert.equal(isNew, false)
+					chai.assert.ok(backbeam.currentUser())
+					chai.assert.equal(user, backbeam.currentUser())
+
+					cred.oauth_token = 'xxxxxxxxxxxxxxxxxxx'
+					backbeam.twitterSignup(cred, function(error, user, isNew) {
+						chai.assert.ok(error)
+						chai.assert.equal(error.status, 'TwitterError')
+
+						done()
+					})
+				})
+			})
+		})
+
+		it('Facebook signup', function(done) {
+			var cred = credentials.facebook
+			backbeam.facebookSignup(cred, function(error, user, isNew) {
+				chai.assert.isNull(error)
+				chai.assert.equal(isNew, true)
+				chai.assert.ok(backbeam.currentUser())
+				chai.assert.equal(user, backbeam.currentUser())
+				chai.assert.ok(user.getFacebookData('link'))
+				chai.assert.ok(user.getFacebookData('name'))
+				chai.assert.ok(user.getFacebookData('id'))
+
+				backbeam.facebookSignup(cred, function(error, user, isNew) {
+					chai.assert.isNull(error)
+					chai.assert.equal(isNew, false)
+					chai.assert.ok(backbeam.currentUser())
+					chai.assert.equal(user, backbeam.currentUser())
+					
+					cred.access_token = 'xxxxxxxxxxxxxxxxxxx'
+					backbeam.facebookSignup(cred, function(error, user, isNew) {
+						chai.assert.ok(error)
+						chai.assert.equal(error.status, 'FacebookError')
+						
+						done()
+					})
+				})
+			})
+		})
+
+		it('Google+ signup', function(done) {
+			var cred = credentials.googleplus
+			backbeam.googlePlusSignup(cred, function(error, user, isNew) {
+				chai.assert.isNull(error)
+				chai.assert.equal(isNew, true)
+				chai.assert.ok(backbeam.currentUser())
+				chai.assert.equal(user, backbeam.currentUser())
+				chai.assert.ok(user.getGooglePlusData('name'))
+				chai.assert.ok(user.getGooglePlusData('image'))
+				chai.assert.ok(user.getGooglePlusData('id'))
+
+				backbeam.googlePlusSignup(cred, function(error, user, isNew) {
+					chai.assert.isNull(error)
+					chai.assert.equal(isNew, false)
+					chai.assert.ok(backbeam.currentUser())
+					chai.assert.equal(user, backbeam.currentUser())
+					
+					cred.access_token = 'xxxxxxxxxxxxxxxxxxx'
+					backbeam.googlePlusSignup(cred, function(error, user, isNew) {
+						chai.assert.ok(error)
+						chai.assert.equal(error.status, 'GooglePlusError')
+						
+						done()
+					})
+				})
+			})
+		})
+
+	}
 })

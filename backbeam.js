@@ -121,9 +121,9 @@
 			if (method === 'GET' || method === 'DELETE') {
 				opts.qs = params
 			} else {
-				opts.form = params
+				var form = params
 			}
-			require('request')(opts, function(err, response, body) {
+			var r = require('request')(opts, function(err, response, body) {
 				if (err) { return callback(err) }
 				try {
 					var data = JSON.parse(body)
@@ -132,6 +132,21 @@
 				}
 				callback(null, data, response.headers)
 			})
+			if (form) {
+				var f = r.form()
+				for (var key in form) {
+					if (form.hasOwnProperty(key)) {
+						var value = form[key]
+						if (_.isArray(value)) {
+							for (var i = 0; i < value.length; i++) {
+								f.append(key, value[i])
+							}
+						} else {
+							f.append(key, value)
+						}
+					}
+				}
+			}
 		}
 	}
 

@@ -1,6 +1,6 @@
 {
   "name": "backbeam",
-  "version": "0.12.0",
+  "version": "0.12.1",
   "description": "Javascript library for backbeam.io. For both nodejs and the browser",
   "main": "backbeam.js",
   "directories": {
